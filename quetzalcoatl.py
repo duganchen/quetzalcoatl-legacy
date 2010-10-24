@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python2.5
 # -*- coding: utf-8 -*-
 
 import sys
@@ -163,13 +163,13 @@ class IdleThread(QtCore.QThread):
         super(IdleThread, self).__init__(parent)
         self.mpdClient = None
 
-    @property
-    def client(self):
+    def __client_get(self):
         return self.mpdClient
 
-    @client.setter
-    def client(self, value):
+    def __client_set(self, value):
         self.mpdClient = value
+
+    client = property(__client_get, __client_set)
 
     def run(self):
         while (Client.exists()):
@@ -222,37 +222,37 @@ class Options(object):
         self.config = kdecore.KSharedConfig.openConfig("quetzalcoatlrc")
         self.connectionGroup = self.config.group("Connection")
 
-    @property
-    def host(self):
+    def __host_get(self):
         return self.connectionGroup.readEntry("host", "localhost").toString()
 
-    @host.setter
-    def host(self, value):
+    def __host_set(self, value):
         self.connectionGroup.writeEntry("host", value)
 
-    @property
-    def port(self):
+    host = property(__host_get, __host_set)
+
+    def __port_get(self):
         return self.connectionGroup.readEntry("port", 6600).toInt()[0]
 
-    @port.setter
-    def port(self, value):
+    def __port_set(self, value):
         self.connectionGroup.writeEntry("port", value)
 
-    @property
-    def needPassword(self):
+    port = property(__port_get, __port_set)
+
+    def __needPassword_get(self):
         return self.connectionGroup.readEntry("needPassword", False).toBool()
 
-    @needPassword.setter
-    def needPassword(self, value):
+    def __needPassword_set(self, value):
         self.connectionGroup.writeEntry("needPassword", value)
 
-    @property
-    def password(self):
+    needPassword = property(__needPassword_get, __needPassword_set)
+        
+    def __password_get(self):
         return self.connectionGroup.readEntry("password", "").toString()
 
-    @password.setter
-    def password(self, value):
+    def __password_set(self, value):
         self.connectionGroup.writeEntry("password", value)
+
+    password = property(__password_get, __password_set)
 
     def save(self):
         self.config.sync()
@@ -286,7 +286,7 @@ class Connector(QtCore.QObject):
             if self.options.needPassword:
                 Client.cmd("password", self.options.password)
             connected = True
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             Client.delete()
             kdeui.KMessageBox.detailedError(self.parent(),\
             "Cannot connect to MPD", str(e), "Cannot Connect")
@@ -304,7 +304,7 @@ class Connector(QtCore.QObject):
             for updateable in self.updateables:
                 if Client.exists():
                     updateable.update(Client.cmd("status"))
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.setBroken(e)
 
     def setBroken(self, e):
@@ -336,7 +336,7 @@ class Connector(QtCore.QObject):
                 playlists = Client.cmd("listplaylists")
                 sortedPlaylists = sorted(playlists, key = self.sortingKey)
                 self.playlistModel.setPlaylists(sortedPlaylists)
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.setBroken(e)
 
     def addPlaylistModel(self, model):
@@ -455,7 +455,7 @@ class Configurer(kdeui.KDialog):
         try:
             if self.volume.isEnabled():
                 Client.cmd("volume", self.volume.value())
-        except Exception as e:
+        except Exception, e:
             # Setting the volume doesn't work on my development system,
             # which uses OSS4.
             if "volume" in str(e):
@@ -1094,7 +1094,7 @@ class DatabaseModel(QtCore.QAbstractItemModel):
             self.beginInsertRows(parent, 0, node.insertCount() - 1)
             node.postFetch()
             self.endInsertRows()
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.emit(QtCore.SIGNAL("broken"), str(e))
             self.connector.setBroken(e)
 
@@ -1242,14 +1242,14 @@ class PlaylistsModel(DatabaseModel):
         try:
             Client.cmd("rename", self.root[index.row()].playlist(), name)
             #self.connector.updatePlaylists()
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def delete(self, index):
         try:
             Client.cmd("rm", self.root[index.row()].playlist())
             #self.connector.updatePlaylists()
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
 
@@ -1410,7 +1410,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                     QtGui.QColor(0, 255, 255)))
 
             return QtCore.QVariant()
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             return QtCore.QVariant()
 
     def flags(self, index):
@@ -1486,7 +1486,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                     self.endInsertRows()
                     insertAt = insertAt + 1
                 self.emit(QtCore.SIGNAL("saveable"), True)
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
         return True
@@ -1570,7 +1570,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                 except:
                     pass
             self.emit(QtCore.SIGNAL("saveable"), size > 0)
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def posCmp(self, a, b):
@@ -1612,7 +1612,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
             self.setSongId(id)
             Client.cmd("playid", id)
             self.emit(QtCore.SIGNAL("playing"))
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def deleteRows(self, rows):
@@ -1671,7 +1671,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
             self.endInsertRows()
             self.playRow(rowToPlay)
             self.emit(QtCore.SIGNAL("saveable"), True)
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def parent(self, index):
@@ -1694,7 +1694,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
     def song(self, index):
         try:
             return Client.cmd("playlistid", self.ids[index.row()])[0]
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def showCombinedTime(self, indexes):
@@ -1804,7 +1804,7 @@ class PlaylistView(QtGui.QTreeView):
         try:
             self.model().showCombinedTime(\
             self.selectionModel().selectedIndexes())
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
 
@@ -1890,7 +1890,7 @@ class PlayPauseAction(QtGui.QAction):
             else:
                 self.setState(PlayPauseAction.PLAYING)
                 Client.cmd("pause", 0)
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def update(self, status):
@@ -1918,7 +1918,7 @@ class PrevAction(QtGui.QAction):
         try:
             Client.cmd("previous")
             self.parentWidget().forceUpdate()
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def setConnector(self, connector):
@@ -1943,7 +1943,7 @@ class NextAction(QtGui.QAction):
         try:
             Client.cmd("next")
             self.parentWidget().forceUpdate()
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def setConnector(self, connector):
@@ -1969,7 +1969,7 @@ class ShuffleAction(QtGui.QAction):
     def shuffle(self, checked):
         try:
             Client.cmd("random", 1 if checked else 0)
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def setConnector(self, connector):
@@ -1999,7 +1999,7 @@ class RepeatAction(QtGui.QAction):
     def repeat(self, checked):
         try:
             Client.cmd("repeat", 1 if checked else 0)
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def setConnector(self, connector):
@@ -2068,7 +2068,7 @@ class PlaylistSaver(kdeui.KDialog):
                 QtGui.QDialog.accept(self)
             else:
                 QtGui.QDialog.reject(self)
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     @classmethod
@@ -2256,7 +2256,7 @@ class UI(kdeui.KMainWindow):
             if value == Parser.elapsed(status):
                 return
             Client.cmd("seekid", status["songid"], value)
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def update(self, status):
@@ -2294,7 +2294,7 @@ class UI(kdeui.KMainWindow):
             self.status.showMessage("")
             self.playPauseAction.setState(PlayPauseAction.STOPPED)
             Client.cmd("stop")
-        except (MPDError, socket.error) as e:
+        except (MPDError, socket.error), e:
             self.connector.setBroken(e)
 
     def forceUpdate(self):
