@@ -1637,11 +1637,12 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                     icon = QtGui.QIcon(kdeui.KIcon("audio-x-generic"))
                     return QtCore.QVariant(icon)
 
-            if role == QtCore.Qt.BackgroundRole:
+            if role == QtCore.Qt.FontRole:
                 if self.ids[index.row()] == self.songid:
-                    return QtCore.QVariant(QtGui.QBrush(\
-                    QtGui.QColor(0, 255, 255)))
-
+                    font = QtGui.QFont()
+                    font.setBold(True)
+                    return QtCore.QVariant(font)
+            
             return QtCore.QVariant()
         except (MPDError, socket.error) as e:
             return QtCore.QVariant()
@@ -2452,7 +2453,11 @@ class UI(kdeui.KMainWindow):
         self.playlistModel = PlaylistModel(combinedTime, self)
         self.connector.addConnectable(self.playlistModel,\
         Connector.UPDATEABLE)
-        self.playlistView = PlaylistView(splitter)
+        playlistSplitter = QtGui.QSplitter(splitter)
+        playlistSplitter.setOrientation(QtCore.Qt.Vertical)
+        albumArt = QtGui.QLabel(playlistSplitter)
+        QtGui.QLabel(splitter)
+        self.playlistView = PlaylistView(playlistSplitter)
         self.connector.addConnectable(self.playlistView)
         self.playlistView.setModel(self.playlistModel)
         self.connect(self.playlistModel, QtCore.SIGNAL("playing"),\
