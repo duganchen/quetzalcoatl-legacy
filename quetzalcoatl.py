@@ -107,6 +107,8 @@ class SanitizedClient(object):
         specified client.
         """
 
+        self.__mutex = QtCore.QMutex()
+
         self.__sanitizers = {}
         self.__sanitizers['songid'] = int
         self.__sanitizers['playlistlength'] = int
@@ -209,7 +211,9 @@ class SanitizedClient(object):
         types.
         """
 
-        result = command(*args)
+        QtCore.QMutexLocker(self.__mutex)
+
+        result = method(*args)
         if type(result) == dict:
             self.__sanitize_dict(result)
         if type(result) == list:
@@ -2570,24 +2574,24 @@ class UI(kdeui.KMainWindow):
     def setNotDragging(self):
         self.isDragging = False
 
+if __name__ == "__main__":
 
-appName = "Quetzalcoatl"
-catalog = ""
-programName = kdecore.ki18n("Quetzalcoatl")
-version = "1.0"
-description = kdecore.ki18n("mpd client")
-license = kdecore.KAboutData.License_GPL
-copyright = kdecore.ki18n("(c) 2009 Dugan Chen")
-text = kdecore.ki18n("none")
-homePage = "www.vcn.bc.ca/~dugan/"
-bugEmail = "see homepage"
+    appName = "Quetzalcoatl"
+    catalog = ""
+    programName = kdecore.ki18n("Quetzalcoatl")
+    version = "1.0"
+    description = kdecore.ki18n("mpd client")
+    license = kdecore.KAboutData.License_GPL
+    copyright = kdecore.ki18n("(c) 2009 Dugan Chen")
+    text = kdecore.ki18n("none")
+    homePage = "www.duganchen.ca"
+    bugEmail = "see homepage"
+    aboutData = kdecore.KAboutData(appName, catalog, programName, version,\
+    description, license, copyright, text, homePage, bugEmail)
 
-aboutData = kdecore.KAboutData(appName, catalog, programName, version,\
-description, license, copyright, text, homePage, bugEmail)
-
-kdecore.KCmdLineArgs.init(sys.argv, aboutData)
-app = kdeui.KApplication()
-client = MPDClient()
-main = UI(client)
-main.show()
-sys.exit(app.exec_())
+    kdecore.KCmdLineArgs.init(sys.argv, aboutData)
+    app = kdeui.KApplication()
+    client = MPDClient()
+    main = UI(client)
+    main.show()
+    sys.exit(app.exec_())
