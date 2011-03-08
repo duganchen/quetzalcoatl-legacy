@@ -10,7 +10,205 @@ from PyKDE4 import kdecore, kdeui
 import socket
 
 
+### Two classes to use to refactor.
+
+class TimeSpan(object):
+    """
+    A span of time
+    """
+    
+    def __init__(self, second_count):
+        self.second_count = int(second_count)
+    
+    def __str__(self):
+        seconds = self.second_count % 60
+        minutes = self.second_count % 3600 / 60
+        hours = self.second_count / 3600
+        
+        value = None
+        if hours == 0 and minutes == 0:
+            value = '0:{0:02}'.format(seconds)
+        elif hours == 0:
+            value = '{0:02}:{1:02}'.format(minutes, seconds)
+        else:
+            value = '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
+        return value
+    
+    def __repr__(self):
+        return repr(self.second_count)
+    
+    def __lt__(self, other):
+        return self.second_count < other.second_count
+    
+    def __le__(self, other):
+        return self.second_count <= other.second_count
+    
+    def __eq__(self, other):
+        return self.second_count == other.second_count
+    
+    def __ne__(self, other):
+        return self.second_count != other.second_count
+    
+    def __gt__(self, other):
+        return self.second_count > other.second_count
+    
+    def __ge__(self, other):
+        return self.second_count >= other.second_count
+    
+    def __hash__(self):
+        return self.second_count
+
+class SanitizedClient(object):
+
+    """
+    Decorates an MPDClient, sanitizing its outputs into
+    the appropriate types.
+    """
+
+    def __init__(self, client):
+
+        """
+        Creates a SanitizedClient that wraps the
+        specified client.
+        """
+
+        self.__sanitizers = {}
+        self.__sanitizers['songid'] = int
+        self.__sanitizers['playlistlength'] = int
+        self.__sanitizers['playlist'] = int
+        self.__sanitizers['song'] = int
+        self.__sanitizers['songs'] = int
+        self.__sanitizers['xfade'] = int
+        self.__sanitizers['volume'] = int
+        self.__sanitizers['nextsong'] = int
+        self.__sanitizers['nextsongid'] = int
+        self.__sanitizers['bitrate'] = int
+        self.__sanitizers['id'] = int
+        self.__sanitizers['pos'] = int
+        self.__sanitizers['artists'] = int
+        self.__sanitizers['albums'] = int
+        self.__sanitizers['songs'] = int
+        self.__sanitizers['cpos'] = int
+        self.__sanitizers['outputid'] = int
+        self.__sanitizers['outputenabled'] = int
+        self.__sanitizers['uptime'] = TimeSpan
+        self.__sanitizers['db_update'] = TimeSpan
+        self.__sanitizers['playtime'] = TimeSpan
+        self.__sanitizers['db_playtime'] = TimeSpan
+        self.__sanitizers['repeat'] = bool
+        self.__sanitizers['consume'] = bool
+        self.__sanitizers['random'] = bool
+        self.__sanitizers['single'] = bool
+        self.__sanitizers['track'] = self.__sanitized_track
+        self.__sanitizers['audio'] = self.__sanitize_audio
+        self.__sanitizers['time'] = self.__sanitize_time
+        self.__sanitizers['title'] = self.__sanitize_tag
+        self.__sanitizers['author'] = self.__sanitize_tag
+        self.__sanitizers['album'] = self.__sanitize_tag
+        self.__sanitizers['genre'] = self.__sanitize_tag
+        self.__sanitizers['album'] = self.__sanitize_tag
+        self.__sanitizers['composer'] = self.__sanitize_tag
+        self.__sanitizers['mixrampdb'] = float
+        self.__client = client
+    
+    @classmethod
+    def __sanitize_audio(cls, value):
+        """
+        Sanitize the audio value.
+        
+        Example: 'audio': '44100:24:2'
+        """
+        return tuple(int(x) for x in value.split(':'))
+
+    @classmethod
+    def __sanitize_time(cls, value):
+        """
+        Returns the sanitized value of time.
+        
+        value might be in one of two formats:
+            'time': '2:151' (elapsed:total)
+            'time': '151' (total only)
+        """
+        
+        if ':' in value:
+            tokens = value.split(':')
+            return tuple([TimeSpan(int(x)) for x in tokens])
+        return TimeSpan(value)
+
+    @classmethod
+    def __sanitize_tag(cls, value):
+
+        """
+        Sanitizes a tag value, which may be a list.
+        """
+
+        if type(value) == list:
+            value = ", ".join(set(value))
+        return value
+    
+    @classmethod
+    def __sanitized_track(cls, value):
+        """
+        Given a string value for a 'track' key, returns the
+        int value (if possible).
+        """
+        end = 0
+        result = value
+        stripped = value.lstrip()
+        for index, character in enumerate(stripped):
+            end = index
+            if not character.isdigit():
+                break
+        try:
+            result = int(stripped[:end])
+        except ValueError:
+            pass
+        return result
+
+    def __command(self, method, *args):
+
+        """
+        Given an MPDClient method attribute
+        and its arguments, executes it and
+        sanitizes the output to the appropriate
+        types.
+        """
+
+        result = command(*args)
+        if type(result) == dict:
+            self.__sanitize_dict(result)
+        if type(result) == list:
+            for item in result:
+                if type(item) == dict:
+                    self.__sanitize_dict(item)
+        return result
+
+    def __sanitize_dict(self, dictionary):
+        """
+        Given a dictionary returned by MPD, sanitizes
+        its values to the appropriate types.
+        """
+        for key, value in dictionary.items():
+            if key in self.__sanitizers:
+                dictionary[key] = self.__sanitizers[key](value)
+    
+    def __getattr__(self, attr):
+        attribute = getattr(self.__client, attr)
+        if hasattr(attribute, "__call__"):
+            return lambda *args: self.__command(attribute, *args)
+        return attribute
+
+
+
+### Production code begins here
+
+
 class Parser(object):
+
+    """
+    The whole point of the SanitizedClient class is to
+    deprecate this one.
+    """
 
     @classmethod
     def isValid(cls, song):
