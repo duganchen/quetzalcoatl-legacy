@@ -18,9 +18,18 @@ class TimeSpan(object):
     """
     
     def __init__(self, second_count):
+        """
+        Creates a timespan with the specified # of seconds.
+        """
         self.second_count = int(second_count)
     
     def __str__(self):
+
+        """
+        Returns a string representation of the timespan,
+        in a music player-friendly format.
+        """
+
         seconds = self.second_count % 60
         minutes = self.second_count % 3600 / 60
         hours = self.second_count / 3600
@@ -35,28 +44,54 @@ class TimeSpan(object):
         return value
     
     def __repr__(self):
+        
+        """
+        Returns the number of seconds.
+        """
+
         return repr(self.second_count)
     
     def __lt__(self, other):
+        
+        """ a < b """
+
         return self.second_count < other.second_count
     
     def __le__(self, other):
+
+        """ a <= b """
+
         return self.second_count <= other.second_count
     
     def __eq__(self, other):
+
+        """ a == b """
+        
         return self.second_count == other.second_count
     
     def __ne__(self, other):
+
+        """ a != b """
+
         return self.second_count != other.second_count
     
     def __gt__(self, other):
+
+        """ a > b """
+
         return self.second_count > other.second_count
     
     def __ge__(self, other):
+
+        """ a >= b """
+
         return self.second_count >= other.second_count
     
     def __hash__(self):
-        return self.second_count
+
+        """ Returns the hash code. """
+
+        return hash(self.second_count)
 
 class SanitizedClient(object):
 
