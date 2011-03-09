@@ -1,10 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+# TO DO: Get rid of the QVariants and other "old style" classes.
+
+# To do NEXT: do the new DBModel
+
 import sys
 import os
 import types
 from PyQt4 import QtCore, QtGui
+from PyQt4.QtCore import QVariant, QAbstractItemModel
 from mpd import MPDClient, MPDError
 from PyKDE4 import kdecore, kdeui
 import socket
@@ -106,8 +111,6 @@ class SanitizedClient(object):
         Creates a SanitizedClient that wraps the
         specified client.
         """
-
-        self.__mutex = QtCore.QMutex()
 
         self.__sanitizers = {}
         self.__sanitizers['songid'] = int
@@ -211,8 +214,6 @@ class SanitizedClient(object):
         types.
         """
 
-        QtCore.QMutexLocker(self.__mutex)
-
         result = method(*args)
         if type(result) == dict:
             self.__sanitize_dict(result)
@@ -237,6 +238,84 @@ class SanitizedClient(object):
             return lambda *args: self.__command(attribute, *args)
         return attribute
 
+
+class DBNode(object):
+    
+    """
+    A node for the tree in the left side of the GUI.
+    """
+    
+    def __init__(self, parent = None):
+        """
+        Creates a DBNode.
+        """
+        self.__children = []
+        self.__parent = parent
+        self.__dataHandlers = {}
+        self.__iconName = None
+    
+    def __len__(self):
+        """
+        Returns the number of children.
+        """
+        return len(self.__children)
+    
+    def __getitem__(self, key):
+        """ Returns the child with the index of key. """
+        return self.__children[key]
+    
+    def __setitem__(self, key, value):
+        """ Sets the child at key to value. """
+        self.__children[key] = value
+    
+    def __delitem__(self, key):
+        """ Removes the child with the specified key. """
+        del self.__children[key]
+    
+    def __iter__(self):
+        """ Returns an iterator. """
+        return self.__children.__iter__()
+    
+    def __reversed__(self):
+        """ Reverses the order of the children. """
+        self.__children.reverse()
+    
+    def append(self, child):
+        """ Appends a child to the node. """
+        self.__children.append(child)
+    
+    @property
+    def parent(self):
+        """ Returns the parent. """
+        return self.__parent
+    
+    @parent.setter
+    def parent(self, node):
+        """ Sets the parent to the specified node. """
+        self.__parent = node
+    
+    @property
+    def dataHandlers(self):
+        """ Returns the map of methods to display data. """
+        return self.__dataHandlers
+    
+    def data(self, column, role):
+        """
+        Returns the data for the specified column and display role.
+        """
+        if role in self.__dataHandlers:
+            return self.__dataHandlers[role](column)
+        return QVariant()
+    
+    @property
+    def iconName(self):
+        """ Returns the name of the default icon. """
+        return self.__iconName
+    
+    @iconName.setter
+    def iconName(self, value):
+        """ Sets the name of the default icon. """
+        self.__iconName = value
 
 
 ### Production code begins here
@@ -709,7 +788,11 @@ class Configurer(kdeui.KDialog):
 
 
 class Node(object):
-
+    
+    """
+    The DBNode class is to deprecate this.
+    """
+    
     def __init__(self, parent = None):
         self.nodeParent = parent
         self.children = []
@@ -2349,23 +2432,43 @@ class PlaylistSaver(kdeui.KDialog):
         lineEdit.setMaxLength(251)
         return lineEdit
 
+
 class ArtLabel(QtGui.QLabel):
+    
+    """
+    A QLabel that scales album art images properly.
+    """
 
     def __init__(self, parent = None):
+        
+        """ Initializes the art label. """
+        
         super(ArtLabel, self).__init__(parent)
         self.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Ignored)
         self.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
 
     def resizeEvent(self, event):
-        super(ArtLabel, self).resizeEvent(event)
+        
+        """ Handles resize events. """
+        
         pixmap = QtGui.QPixmap("hamster.jpg")
-        pixmapRatio = pixmap.width() / pixmap.height()
-        h = event.size().height()
+        
+        pixmapWidth = pixmap.width()
+        pixmapHeight = pixmap.height()
+        
+        if pixmapHeight > 0:
+            pixmapRatio  = pixmapWidth / pixmapHeight
+        else:
+            pixmapRatio = pixmapWidth
+
         w = event.size().width()
+        h = event.size().height()
+
         if h > 0:
             ratio = w / h
         else:
-            ratio = 1
+            ratio = w
+
         if pixmapRatio < ratio:
             self.setPixmap(pixmap.scaledToHeight(h, QtCore.Qt.SmoothTransformation))
         else:
