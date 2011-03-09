@@ -2349,6 +2349,60 @@ class PlaylistSaver(kdeui.KDialog):
         lineEdit.setMaxLength(251)
         return lineEdit
 
+class ArtLabel(QtGui.QLabel):
+
+    def __init__(self, parent = None):
+        super(ArtLabel, self).__init__(parent)
+        self.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Ignored)
+        self.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
+
+    def resizeEvent(self, event):
+        super(ArtLabel, self).resizeEvent(event)
+        pixmap = QtGui.QPixmap("hamster.jpg")
+        pixmapRatio = pixmap.width() / pixmap.height()
+        h = event.size().height()
+        w = event.size().width()
+        if h > 0:
+            ratio = w / h
+        else:
+            ratio = 1
+        if pixmapRatio < ratio:
+            self.setPixmap(pixmap.scaledToHeight(h, QtCore.Qt.SmoothTransformation))
+        else:
+            self.setPixmap(pixmap.scaledToWidth(w, QtCore.Qt.SmoothTransformation))
+
+
+class UI(kdeui.KMainWindow):
+
+    def __init__(self, client):
+        QtGui.QMainWindow.__init__(self)
+        self.setWindowIcon(kdeui.KIcon("multimedia-player"))
+
+        self.isDragging = False
+
+        self.resize(800, 600)
+        self.setWindowTitle('Quetzalcoatl')
+
+        self.status = self.statusBar()
+        combinedTime = QtGui.QLabel()
+        self.status.addPermanentWidget(combinedTime)
+
+        self.connector = Connector(self)
+        self.connector.addConnectable(self, Connector.UPDATEABLE)
+
+        self.cfgDlg = Configurer(self)
+
+        toolBar = self.toolBar("ToolBar")
+        toolBar.setToolBarsEditable(False)
+        toolBar.setToolBarsLocked(True)
+        toolBar.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+
+        toolBar.addAction(kdeui.KIcon("configure"), "Configure",\
+        self.cfgDlg.exec_)
+
+        connectAction = ConnectAction(self)
+
+
 
 class UI(kdeui.KMainWindow):
 
@@ -2459,8 +2513,8 @@ class UI(kdeui.KMainWindow):
         Connector.UPDATEABLE)
         playlistSplitter = QtGui.QSplitter(splitter)
         playlistSplitter.setOrientation(QtCore.Qt.Vertical)
-        albumArt = QtGui.QLabel(playlistSplitter)
-        QtGui.QLabel(splitter)
+        artLabel = ArtLabel(playlistSplitter)
+        artLabel.setPixmap(QtGui.QPixmap("hamster.jpg"))
         self.playlistView = PlaylistView(playlistSplitter)
         self.connector.addConnectable(self.playlistView)
         self.playlistView.setModel(self.playlistModel)
