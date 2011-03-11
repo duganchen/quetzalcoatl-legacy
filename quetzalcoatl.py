@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
 import sip
@@ -656,7 +656,8 @@ class Options(object):
 
     @property
     def needPassword(self):
-        return self.connectionGroup.readEntry("needPassword", False).toBool()
+        #return self.connectionGroup.readEntry("needPassword", False).toBool()
+        return True
 
     @needPassword.setter
     def needPassword(self, value):
