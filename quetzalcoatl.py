@@ -1,18 +1,27 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# TO DO: Get rid of the QVariants and other "old style" classes.
-
-# To do NEXT: do the new DBModel
+import sip
+sip.setapi("QDate", 2)
+sip.setapi("QDateTime", 2)
+sip.setapi("QTextStream", 2)
+sip.setapi("QTime", 2)
+sip.setapi("QVariant", 2)
+sip.setapi("QString", 2)
+sip.setapi("QUrl", 2)
 
 import sys
 import os
 import types
 from PyQt4 import QtCore, QtGui
-from PyQt4.QtCore import QVariant, QAbstractItemModel
+from PyQt4.QtCore import QAbstractItemModel
 from mpd import MPDClient, MPDError
 from PyKDE4 import kdecore, kdeui
+from PyQt4.QtCore import QSize, Qt, QModelIndex
+from PyQt4.QtGui import QKeySequence, QTreeView
+from PyKDE4.kdeui import KIcon
 import socket
+
 
 
 ### Two classes to use to refactor.
@@ -239,21 +248,24 @@ class SanitizedClient(object):
         return attribute
 
 
-class DBNode(object):
+class TreeNode(object):
     
     """
     A node for the tree in the left side of the GUI.
     """
     
-    def __init__(self, parent = None):
+    def __init__(self):
         """
-        Creates a DBNode.
+        Creates a TreeNode.
         """
         self.__children = []
-        self.__parent = parent
+        self.__parent = None
         self.__dataHandlers = {}
-        self.__iconName = None
-    
+        self.__icon = None
+        self.__dataHandlers[Qt.DisplayRole] = lambda x: "aa"
+        self.__dataHandlers[Qt.DecorationRole] = lambda x: self.__icon
+        self.__isSong = True
+
     def __len__(self):
         """
         Returns the number of children.
@@ -261,7 +273,7 @@ class DBNode(object):
         return len(self.__children)
     
     def __getitem__(self, key):
-        """ Returns the child with the index of key. """
+        """ Returns the child with the row of key. """
         return self.__children[key]
     
     def __setitem__(self, key, value):
@@ -282,6 +294,7 @@ class DBNode(object):
     
     def append(self, child):
         """ Appends a child to the node. """
+        child.parent = self
         self.__children.append(child)
     
     @property
@@ -307,16 +320,100 @@ class DBNode(object):
             return self.__dataHandlers[role](column)
         return QVariant()
     
-    @property
-    def iconName(self):
-        """ Returns the name of the default icon. """
-        return self.__iconName
+    def row(self, x):
+        """ Returns the(row) of child node x. """
+        return self.__children.index(x)
     
-    @iconName.setter
-    def iconName(self, value):
-        """ Sets the name of the default icon. """
-        self.__iconName = value
+    @property
+    def icon(self):
+        """
+        Returns the icon, in the form of a scaled QPixmap.
+        """
+        return self.__icon
+    
+    @icon.setter
+    def icon(self, value):
+        """ Sets the icon. """
+        self.__icon = value
+    
+    @property
+    def isSong(self):
+        return self.__isSong
+    
+    @isSong.setter
+    def isSong(self, value):
+        self.__isSong = value
 
+class TreeModel(QtCore.QAbstractItemModel):
+
+    def __init__(self, parent = None):
+        super(TreeModel, self).__init__(parent)
+        folderIcon = self.pixmap("folder-sound")
+        songIcon = self.pixmap("audio-x-generic")
+        self.__root = TreeNode()
+        child = TreeNode()
+        child.isSong = False
+        child.icon = folderIcon
+        grandChild = TreeNode()
+        grandChild.icon = songIcon
+        grandChild.isSong = True
+        child.append(grandChild)
+        self.__root.append(child)
+    
+    def rowCount(self, parent):
+        if parent.isValid():
+            parentNode = parent.internalPointer()
+        else:
+            parentNode = self.__root
+        return len(parentNode)
+
+    def columnCount(self, parent):
+        return 1
+
+    def parent(self, index):
+        if not index.isValid():
+            return QModelIndex()
+        node = index.internalPointer()
+        parentNode = node.parent
+        if parentNode is None:
+            return QModelIndex()
+        grandparentNode = parentNode.parent
+        if grandparentNode is None:
+            return QModelIndex()
+        return self.createIndex(grandparentNode.row(parentNode),
+                                0, parentNode)
+    
+    def data(self, index, role = Qt.DisplayRole):
+        if not index.isValid():
+            return None
+        node = index.internalPointer()
+        if not role in node.dataHandlers:
+            return None
+        return node.dataHandlers[role](index.column())
+    
+    def index(self, row, column, parent = QModelIndex()):
+        if not self.hasIndex(row, column, parent):
+            return QModelIndex()
+        if parent.isValid():
+            parentNode = parent.internalPointer()
+        else:
+            parentNode = self.__root
+        return self.createIndex(row, column, parentNode[row])
+    
+    def flags(self, index):
+        flags = QtCore.Qt.ItemIsEnabled
+        node = index.internalPointer()
+        if node.isSong:
+            flags = flags | QtCore.Qt.ItemIsSelectable
+            flags = flags | QtCore.Qt.ItemIsDragEnabled
+        return flags
+    
+    @classmethod
+    def pixmap(cls, iconName):
+        icon = KIcon(iconName)
+        pixmap = icon.pixmap(QSize(32, 32))
+        return pixmap.scaled(QSize(34, 34), Qt.IgnoreAspectRatio,
+                               Qt.FastTransformation)
 
 ### Production code begins here
 
@@ -405,11 +502,11 @@ class Parser(object):
 
     @classmethod
     def total(cls, status):
-        return int(status["time"][status["time"].index(":") + 1:])
+        return int(status["time"][status["time"].row(":") + 1:])
 
     @classmethod
     def elapsed(cls, status):
-        return int(status["time"][0:status["time"].index(":")])
+        return int(status["time"][0:status["time"].row(":")])
 
     @classmethod
     def prettyTime(cls, time):
@@ -540,7 +637,7 @@ class Options(object):
 
     @property
     def host(self):
-        return self.connectionGroup.readEntry("host", "localhost").toString()
+        return self.connectionGroup.readEntry("host", "localhost")
 
     @host.setter
     def host(self, value):
@@ -548,7 +645,10 @@ class Options(object):
 
     @property
     def port(self):
-        return self.connectionGroup.readEntry("port", 6600).toInt()[0]
+        # get this working later
+        # return self.connectionGroup.readEntry("port", 6600)[0]
+        return 6600
+        
 
     @port.setter
     def port(self, value):
@@ -564,7 +664,7 @@ class Options(object):
 
     @property
     def password(self):
-        return self.connectionGroup.readEntry("password", "").toString()
+        return self.connectionGroup.readEntry("password", "")
 
     @password.setter
     def password(self, value):
@@ -790,7 +890,7 @@ class Configurer(kdeui.KDialog):
 class Node(object):
     
     """
-    The DBNode class is to deprecate this.
+    The TreeNode class is to deprecate this.
     """
     
     def __init__(self, parent = None):
@@ -821,7 +921,7 @@ class Node(object):
         return self.nodeParent
 
     def row(self):
-        return self.nodeParent.children.index(self)
+        return self.nodeParent.children.row(self)
 
     def __getitem__(self, i):
         return self.children[i]
@@ -1430,7 +1530,7 @@ class DatabaseModel(QtCore.QAbstractItemModel):
             return QtCore.QModelIndex()
         return self.createIndex(node.parent().row(), 0, node.parent())
 
-    def index(self, row, column, parent):
+    def row(self, row, column, parent):
         if not self.hasIndex(row, column, parent):
             return QtCore.QModelIndex()
         parentNode = self.node(parent)
@@ -1438,7 +1538,7 @@ class DatabaseModel(QtCore.QAbstractItemModel):
 
     def flags(self, index):
         flags = QtCore.Qt.ItemIsEnabled
-        if self.node(index).isLeaf():
+        if self.node(row).isLeaf():
             flags = flags | QtCore.Qt.ItemIsSelectable
             flags = flags | QtCore.Qt.ItemIsDragEnabled
         return flags
@@ -1460,21 +1560,25 @@ class DatabaseModel(QtCore.QAbstractItemModel):
             return QtCore.QVariant()
 
         if role == QtCore.Qt.DisplayRole:
-            return self.node(index).data()
+            return self.node(row).data()
 
-        if self.node(index).isLeaf():
+        if self.node(row).isLeaf():
             if role == QtCore.Qt.DecorationRole:
-                # My C++ knowledge helped me solve this.
-                icon = QtGui.QIcon(kdeui.KIcon("audio-x-generic"))
-                return QtCore.QVariant(icon)
+                icon = kdeui.KIcon("audio-x-generic")
+                pixmap = icon.pixmap(QSize(32, 32))
+                scaled = pixmap.scaled(QSize(34, 34), Qt.IgnoreAspectRatio, Qt.FastTransformation)
+                return QtCore.QVariant(scaled)
         else:
             if role == QtCore.Qt.FontRole:
                 font = QtGui.QFont()
                 font.setBold(True)
                 return QtCore.QVariant(font)
             if role == QtCore.Qt.DecorationRole:
-                icon = QtGui.QIcon(kdeui.KIcon("folder-sound"))
-                return QtCore.QVariant(icon)
+                icon = kdeui.KIcon("folder-sound")
+                pixmap = icon.pixmap(QSize(32, 32))
+                scaled = pixmap.scaled(QSize(34, 34), Qt.IgnoreAspectRatio, Qt.FastTransformation)
+                
+                return QtCore.QVariant(scaled)
 
 
         return QtCore.QVariant()
@@ -1491,7 +1595,7 @@ class DatabaseModel(QtCore.QAbstractItemModel):
         stream = QtCore.QDataStream(encodedData, QtCore.QIODevice.WriteOnly)
         for index in indexes:
             if index.isValid():
-                stream.writeString(self.node(index).myUri())
+                stream.writeString(self.node(row).myUri())
 
         mimeData = QtCore.QMimeData()
         mimeData.setData("application/x-quetzalcoatl-uris", encodedData)
@@ -1554,7 +1658,7 @@ class PlaylistsModel(DatabaseModel):
 
     def flags(self, index):
         flags = super(PlaylistsModel, self).flags(index)
-        if index.isValid() and not self.node(index).isLeaf():
+        if index.isValid() and not self.node(row).isLeaf():
             flags = flags | QtCore.Qt.ItemIsEditable
         return flags
 
@@ -1636,21 +1740,21 @@ class PlaylistsView(DatabaseView):
         rename = QtGui.QAction("Rename", self)
         self.connect(rename, QtCore.SIGNAL("triggered()"), self.renameSlot)
         self.actions.append(rename)
-        self.index = None
+        self.row = None
         self.setEditTriggers(QtGui.QAbstractItemView.SelectedClicked)
 
     def renameSlot(self):
-        self.edit(self.index)
+        self.edit(self.row)
 
     def deleteSlot(self):
-        self.model().delete(self.index)
+        self.model().delete(self.row)
 
     def contextMenuEvent(self, event):
-        self.index = self.indexAt(event.pos())
-        if not self.index.isValid():
-            self.index = None
+        self.row = self.indexAt(event.pos())
+        if not self.row.isValid():
+            self.row = None
             return
-        node = self.index.internalPointer()
+        node = self.row.internalPointer()
         if not node.isLeaf():
             QtGui.QMenu.exec_(self.actions, event.globalPos())
 
@@ -1664,7 +1768,7 @@ class PlaylistsDelegate(QtGui.QStyledItemDelegate):
         return PlaylistSaver.createLineEdit(parent, True)
 
     def setEditorData(self, editor, index):
-        editor.setText(index.internalPointer().nodeData["playlist"])
+        editor.setText(row.internalPointer().nodeData["playlist"])
 
     def setModelData(self, editor, model, index):
         name = unicode(editor.text()).strip()
@@ -1721,8 +1825,10 @@ class PlaylistModel(QtCore.QAbstractItemModel):
 
             if role == QtCore.Qt.DecorationRole:
                 if index.column() == 0:
-                    icon = QtGui.QIcon(kdeui.KIcon("audio-x-generic"))
-                    return QtCore.QVariant(icon)
+                    icon = kdeui.KIcon("audio-x-generic")
+                    pixmap = icon.pixmap(QSize(32, 32))
+                    scaled = pixmap.scaled(QSize(34, 34), Qt.IgnoreAspectRatio, Qt.FastTransformation)
+                    return QtCore.QVariant(scaled)
 
             if role == QtCore.Qt.FontRole:
                 if self.ids[index.row()] == self.songid:
@@ -1812,7 +1918,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
 
         return True
 
-    def index(self, row, column, parent):
+    def row(self, row, column, parent):
 
         # This is lifted from Esperenza's PlaylistModel class.
         if not parent.isValid():
@@ -1844,8 +1950,8 @@ class PlaylistModel(QtCore.QAbstractItemModel):
         self.ids[destIndex] = id
         self.emit(QtCore.SIGNAL(\
         "dataChanged(QModelIndex, QModelIndex)"),\
-        self.index(firstIndex, 0, QtCore.QModelIndex()),\
-        self.index(lastIndex, 1, QtCore.QModelIndex()))
+        self.row(firstIndex, 0, QtCore.QModelIndex()),\
+        self.row(lastIndex, 1, QtCore.QModelIndex()))
 
     def update(self, status):
         version = int(status["playlist"])
@@ -1868,8 +1974,8 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                         self.ids[pos] = id
                         self.emit(QtCore.SIGNAL(
                         "dataChanged(QModelIndex, QModelIndex)"),\
-                       self.index(pos, 0, QtCore.QModelIndex()),\
-                        self.index(pos, 1, QtCore.QModelIndex()))
+                       self.row(pos, 0, QtCore.QModelIndex()),\
+                        self.row(pos, 1, QtCore.QModelIndex()))
                     else:
                         self.beginInsertRows(QtCore.QModelIndex(),
                         len(self.ids), len(self.ids))
@@ -1882,12 +1988,12 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                     self.setSongId(songid)
             else:
                 try:
-                    i = self.ids.index(self.songid)
+                    i = self.ids.row(self.songid)
                     self.songid = PlaylistModel.NO_SONGID
                     self.emit(QtCore.SIGNAL(\
                     "dataChanged(QModelIndex, QModelIndex)"),\
-                    self.index(i, 0, QtCore.QModelIndex()),\
-                    self.index(i, 1, QtCore.QModelIndex()))
+                    self.row(i, 0, QtCore.QModelIndex()),\
+                    self.row(i, 1, QtCore.QModelIndex()))
                 except:
                     pass
             self.emit(QtCore.SIGNAL("saveable"), size > 0)
@@ -1903,20 +2009,20 @@ class PlaylistModel(QtCore.QAbstractItemModel):
             self.songid = songid
 
             try:
-                oldIndex = self.ids.index(oldId)
+                oldIndex = self.ids.row(oldId)
                 self.emit(QtCore.SIGNAL(\
                 "dataChanged(QModelIndex, QModelIndex)"),\
-                self.index(oldIndex, 0, QtCore.QModelIndex()),\
-                self.index(oldIndex, 1, QtCore.QModelIndex()))
+                self.row(oldIndex, 0, QtCore.QModelIndex()),\
+                self.row(oldIndex, 1, QtCore.QModelIndex()))
             except:
                 pass
 
             try:
-                newIndex = self.ids.index(self.songid)
+                newIndex = self.ids.row(self.songid)
                 self.emit(QtCore.SIGNAL(\
                 "dataChanged(QModelIndex, QModelIndex)"),\
-                self.index(newIndex, 0, QtCore.QModelIndex()),\
-                self.index(newIndex, 1, QtCore.QModelIndex()))
+                self.row(newIndex, 0, QtCore.QModelIndex()),\
+                self.row(newIndex, 1, QtCore.QModelIndex()))
             except:
                 # If the id in question is not found, the playlist is
                 # inconsistent. The poller and setVersion will take care of
@@ -2043,7 +2149,7 @@ class PlaylistView(QtGui.QTreeView):
         self.setSelectionBehavior(self.SelectRows)
         delete = QtGui.QAction("Delete", self)
         self.connect(delete, QtCore.SIGNAL("triggered()"), self.deleteSlot)
-        self.index = None
+        self.row = None
         self.actions = [delete]
 
     def clientConnect(self):
@@ -2059,9 +2165,9 @@ class PlaylistView(QtGui.QTreeView):
         display = False
         if self.indexAt(event.pos()).isValid():
             display = True
-            self.index = self.indexAt(event.pos())
+            self.row = self.indexAt(event.pos())
         else:
-            self.index = None
+            self.row = None
         if len(self.selectedIndexes()) > 0:
             display = True
         if display:
@@ -2071,8 +2177,8 @@ class PlaylistView(QtGui.QTreeView):
         rows = set()
         for index in self.selectedIndexes():
             rows.add(index.row())
-        if self.index:
-            rows.add(self.index.row())
+        if self.row:
+            rows.add(self.row.row())
         self.model().deleteRows(rows)
 
     def setModel(self, model):
@@ -2092,7 +2198,7 @@ class PlaylistView(QtGui.QTreeView):
         else:
             try:
                 # A candidate for refactoring, yes.
-                row = self.model().ids.index(self.model().songid)
+                row = self.model().ids.row(self.model().songid)
             except:
                 if self.model().rowCount() > 0:
                     row = 0
@@ -2610,6 +2716,11 @@ class UI(kdeui.KMainWindow):
         self.addTab(AllSongsFetcher(), OneUri(), "Songs")
         self.addTab(GenresFetcher(), AllUris(), "Genres")
         self.addTab(ComposersFetcher(), AllUris(), "Composers")
+        
+        treeModel = TreeModel()
+        treeView = QTreeView()
+        treeView.setModel(treeModel)
+        self.tabs.addTab(treeView, "New")
 
         self.playlistModel = PlaylistModel(combinedTime, self)
         self.connector.addConnectable(self.playlistModel,\
