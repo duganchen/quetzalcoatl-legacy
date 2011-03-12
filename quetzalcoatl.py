@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sip
+
 sip.setapi("QDate", 2)
 sip.setapi("QDateTime", 2)
 sip.setapi("QTextStream", 2)
@@ -14,10 +15,10 @@ import sys
 import os
 import types
 from PyQt4 import QtCore, QtGui
-from PyQt4.QtCore import QAbstractItemModel
+from PyQt4.QtCore import QAbstractItemModel, QObject
 from mpd import MPDClient, MPDError
 from PyKDE4 import kdecore, kdeui
-from PyQt4.QtCore import QSize, Qt, QModelIndex
+from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
 from PyQt4.QtGui import QKeySequence, QTreeView
 from PyKDE4.kdeui import KIcon
 import socket
@@ -209,7 +210,7 @@ class SanitizedClient(object):
             if not character.isdigit():
                 break
         try:
-            result = int(stripped[:end])
+            result = int(stripped[:end + 1])
         except ValueError:
             pass
         return result
@@ -237,6 +238,7 @@ class SanitizedClient(object):
         Given a dictionary returned by MPD, sanitizes
         its values to the appropriate types.
         """
+        
         for key, value in dictionary.items():
             if key in self.__sanitizers:
                 dictionary[key] = self.__sanitizers[key](value)
@@ -414,6 +416,127 @@ class TreeModel(QtCore.QAbstractItemModel):
         pixmap = icon.pixmap(QSize(32, 32))
         return pixmap.scaled(QSize(34, 34), Qt.IgnoreAspectRatio,
                                Qt.FastTransformation)
+
+class Client0(QObject):
+    """
+    The client wrapper class.
+    """
+    
+    playlistlength = pyqtSignal(int)
+    playlist = pyqtSignal(int)
+    repeat = pyqtSignal(bool)
+    consume = pyqtSignal(bool)
+    random = pyqtSignal(bool)
+    state = pyqtSignal(str)
+    xfade = pyqtSignal(int)
+    single = pyqtSignal(bool)
+    error = pyqtSignal(str)
+    isConnected = pyqtSignal(bool)
+    time = pyqtSignal(TimeSpan)
+    elapsed = pyqtSignal(TimeSpan)
+    
+    def __init__(self, parent = None):
+        """
+        Initializes the Client.
+        """
+
+        super(Client0, self).__init__(parent)
+        self.__poller = None
+        self.__idler = None
+        self.__timer = QTimer(self)
+        self.__timer.setInterval(1000)
+        self.__timer.timeout.connect(self.poll)
+        self.__status = {}
+
+    def __getattr__(self, attr):
+        """ Allows access to the client's methods. """
+
+        attribute = getattr(self.__poller, attr)
+        if not hasattr(attribute, "__call__"):
+            return attribute
+        return lambda *args: self.__wrapper(attribute, *args)
+    
+    def __wrapper(self, method, *args):
+        """
+        Executes a poller method, and handles exceptions.
+        """
+        value = None
+        
+        try:
+            value = method(*args)
+        except Exception as e:
+            self.close()
+            self.error.emit(str(e))
+        return value
+    
+    def open(self, host, port):
+        """
+        Connects to the client.
+        """
+        self.__poller = SanitizedClient(MPDClient())
+        self.__poller.connect(host, port)
+        self.__status.clear()
+        self.__timer.start()
+        self.isConnected.emit(True)
+    
+    def close(self):
+        """
+        Closes the connection.
+        """
+        self.__poller.disconnect()
+        self.__poller = None
+        self.isConnected.emit(False)
+    
+    def poll(self):
+        """ Polls the server. """
+        status = self.__poller.status()
+        
+        if self.__updated(status, 'playlistlength'):
+            self.__status['playlistlength'] = status['playlistlength']
+            self.playlistlength.emit(status['playlistlength'])
+
+        if self.__updated(status, 'playlist'):
+            self.__status['playlist'] = status['playlist']
+            self.playlist.emit(status['playlistlength'])
+        
+        if self.__updated(status, 'repeat'):
+            self.__status['repeat'] = status['repeat']
+            self.repeat.emit(status['repeat'])
+
+        if self.__updated(status, 'consume'):
+            self.__status['consume'] = status['consume']
+            self.consume.emit(status['consume'])
+
+        if self.__updated(status, 'random'):
+            self.__status['random'] = status['random']
+            self.random.emit(status['random'])
+
+        if self.__updated(status, 'state'):
+            self.__status['state'] = status['state']
+            self.state.emit(status['state'])
+        
+        if self.__updated(status, 'xfade'):
+            self.__status['xfade'] = status['xfade']
+            self.random.emit(status['xfade'])
+        
+        if self.__updated(status, 'single'):
+            self.__status['single'] = status['single']
+            self.xfade.emit(status['xfade'])
+    
+    def __updated(self, status, key):
+        """
+        Determines whether to emit a signal.
+        """
+        
+        if key not in status:
+            return False
+
+        if key not in self.__status:
+            return True
+        if status[key] != self.__status[key]:
+            return True
+        
+        return False
 
 ### Production code begins here
 
@@ -875,8 +998,9 @@ class Configurer(kdeui.KDialog):
         except Exception as e:
             # Setting the volume doesn't work on my development system,
             # which uses OSS4.
-            if "volume" in str(e):
-                print str(e)
+            #if "volume" in str(e):
+            #    print str(e)
+            pass
 
         QtGui.QDialog.accept(self)
 
@@ -2109,10 +2233,10 @@ class PlaylistModel(QtCore.QAbstractItemModel):
         if orientation == QtCore.Qt.Horizontal and \
         role == QtCore.Qt.DisplayRole:
             if section == 0:
-                return QtCore.QVariant("Name")
+                return "Name"
             if section == 1:
-                return QtCore.QVariant("Time")
-        return QtCore.QVariant()
+                return "Time"
+        return None
 
     def hasChildren(self, parent):
         if parent.isValid():
@@ -2618,6 +2742,11 @@ class UI(kdeui.KMainWindow):
 
     def __init__(self, client):
         QtGui.QMainWindow.__init__(self)
+        self.__c = Client0(self)
+        self.__c.open("localhost", 6600) 
+        
+        client = Client()
+        
         self.setWindowIcon(kdeui.KIcon("multimedia-player"))
 
         self.isDragging = False
