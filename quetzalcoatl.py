@@ -137,7 +137,7 @@ class SanitizedClient(object):
         self.__sanitizers['pos'] = int
         self.__sanitizers['artists'] = int
         self.__sanitizers['albums'] = int
-        self.__sanitizers['songs'] = int
+        self.__sanitizers['song'] = int
         self.__sanitizers['cpos'] = int
         self.__sanitizers['outputid'] = int
         self.__sanitizers['outputenabled'] = int
@@ -432,8 +432,8 @@ class Client0(QObject):
     single = pyqtSignal(bool)
     error = pyqtSignal(str)
     isConnected = pyqtSignal(bool)
-    time = pyqtSignal(TimeSpan)
-    elapsed = pyqtSignal(TimeSpan)
+    time = pyqtSignal(TimeSpan, TimeSpan)
+    songid = pyqtSignal(int)
     
     def __init__(self, parent = None):
         """
@@ -442,14 +442,18 @@ class Client0(QObject):
 
         super(Client0, self).__init__(parent)
         self.__poller = None
-        self.__idler = None
         self.__timer = QTimer(self)
         self.__timer.setInterval(1000)
         self.__timer.timeout.connect(self.poll)
         self.__status = {}
 
     def __getattr__(self, attr):
-        """ Allows access to the client's methods. """
+        """
+        Allows access to the client's methods.
+        
+        Do not use it to call the client's connect() and
+        disconnect() methods.
+        """
 
         attribute = getattr(self.__poller, attr)
         if not hasattr(attribute, "__call__"):
@@ -522,6 +526,15 @@ class Client0(QObject):
         if self.__updated(status, 'single'):
             self.__status['single'] = status['single']
             self.xfade.emit(status['xfade'])
+        
+        if self.__updated(status, 'time'):
+            self.__status['time'] = status['time']
+            elapsed, total = status['time']
+            self.time.emit(elapsed, total)
+        
+        if self.__updated(status, 'songid'):
+            self.__status['songid'] = status['songid']
+            self.songid.emit(status['songid'])
     
     def __updated(self, status, key):
         """
@@ -667,6 +680,9 @@ class Parser(object):
 
 
 class Client(object):
+    """
+    Deprecated. To be replaced with the other Client class.
+    """
 
     client = None
 
@@ -694,6 +710,9 @@ class Client(object):
 
 
 class IdleThread(QtCore.QThread):
+    """
+    Deprecated. To be moved into the client class.
+    """
 
     def __init__(self, parent = None):
         super(IdleThread, self).__init__(parent)
@@ -719,6 +738,10 @@ class IdleThread(QtCore.QThread):
 
 
 class Idler(QtCore.QObject):
+    
+    """
+    Deprecated. To be moved into the Client class.
+    """
 
     def __init__(self, parent = None):
         super(Idler, self).__init__(parent)
