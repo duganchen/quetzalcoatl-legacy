@@ -19,7 +19,7 @@ from PyQt4.QtCore import QAbstractItemModel, QObject
 from mpd import MPDClient, MPDError
 from PyKDE4 import kdecore, kdeui
 from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
-from PyQt4.QtGui import QKeySequence, QTreeView
+from PyQt4.QtGui import QIcon, QTreeView
 from PyKDE4.kdeui import KIcon
 import socket
 
@@ -256,17 +256,17 @@ class TreeNode(object):
     A node for the tree in the left side of the GUI.
     """
     
-    def __init__(self):
+    def __init__(self, controller):
         """
         Creates a TreeNode.
         """
         self.__children = []
         self.__parent = None
-        self.__dataHandlers = {}
         self.__icon = None
-        self.__dataHandlers[Qt.DisplayRole] = lambda x: "aa"
-        self.__dataHandlers[Qt.DecorationRole] = lambda x: self.__icon
-        self.__isSong = True
+        self.__controller = controller
+        controller.node = self
+        self.__song = None
+        self.__isFetched = False
 
     def __len__(self):
         """
@@ -309,18 +309,18 @@ class TreeNode(object):
         """ Sets the parent to the specified node. """
         self.__parent = node
     
-    @property
-    def dataHandlers(self):
-        """ Returns the map of methods to display data. """
-        return self.__dataHandlers
-    
-    def data(self, column, role):
+    def data(self, index, role):
         """
         Returns the data for the specified column and display role.
         """
-        if role in self.__dataHandlers:
-            return self.__dataHandlers[role](column)
-        return QVariant()
+        
+        if role == Qt.DisplayRole:
+            return self.__controller.label
+        
+        if role == Qt.DecorationRole:
+            return self.__controller.icon
+        
+        return None
     
     def row(self, x):
         """ Returns the(row) of child node x. """
@@ -339,30 +339,51 @@ class TreeNode(object):
         self.__icon = value
     
     @property
-    def isSong(self):
-        return self.__isSong
+    def song(self):
+        """
+        Returns the node's song.
+        
+        Returns none if the node doesn't have a song
+        (i.e. if it's a directory).
+        """
+        return self.__song
     
-    @isSong.setter
-    def isSong(self, value):
-        self.__isSong = value
+    @song.setter
+    def song(self, value):
+        """ Sets the node's song. """
+        self.__song = value
+    
+    @property
+    def isFetched(self):
+        """ Returns whether the node is fetched. """
+        return self.__isFetched
+    
+    @isFetched.setter
+    def isFetched(self, value):
+        self.__isFetched = value
+    
+    def fetch(self):
+        """
+        Fetches and returns data.
+        """
+        return self.__controller.fetch()
 
 class TreeModel(QtCore.QAbstractItemModel):
 
+    """
+    The main model class used by Quetzalcoatl.    
+    """
+    
+    # http://benjamin-meyer.blogspot.com/2006/10/dynamic-models.html
+
     def __init__(self, parent = None):
+        """ Initializes the model. """
         super(TreeModel, self).__init__(parent)
-        folderIcon = self.pixmap("folder-sound")
-        songIcon = self.pixmap("audio-x-generic")
-        self.__root = TreeNode()
-        child = TreeNode()
-        child.isSong = False
-        child.icon = folderIcon
-        grandChild = TreeNode()
-        grandChild.icon = songIcon
-        grandChild.isSong = True
-        child.append(grandChild)
-        self.__root.append(child)
+        self.__root = TreeNode(RootController())
+        self.__root.isFetched = False
     
     def rowCount(self, parent):
+        """ Returns the number of rows. """
         if parent.isValid():
             parentNode = parent.internalPointer()
         else:
@@ -370,9 +391,13 @@ class TreeModel(QtCore.QAbstractItemModel):
         return len(parentNode)
 
     def columnCount(self, parent):
+        """ Returns the number of columns. """
         return 1
 
     def parent(self, index):
+        
+        """ Given an index, returns its parent. """
+        
         if not index.isValid():
             return QModelIndex()
         node = index.internalPointer()
@@ -386,14 +411,18 @@ class TreeModel(QtCore.QAbstractItemModel):
                                 0, parentNode)
     
     def data(self, index, role = Qt.DisplayRole):
+        
+        """ Returns data for the given index and role. """
+        
         if not index.isValid():
             return None
         node = index.internalPointer()
-        if not role in node.dataHandlers:
-            return None
-        return node.dataHandlers[role](index.column())
+        return node.data(index, role)
     
     def index(self, row, column, parent = QModelIndex()):
+        
+        """ returns an index for the given parameters. """
+        
         if not self.hasIndex(row, column, parent):
             return QModelIndex()
         if parent.isValid():
@@ -403,19 +432,193 @@ class TreeModel(QtCore.QAbstractItemModel):
         return self.createIndex(row, column, parentNode[row])
     
     def flags(self, index):
+        
+        """ Returns the behavior flags for the given index. """
+        
         flags = QtCore.Qt.ItemIsEnabled
         node = index.internalPointer()
-        if node.isSong:
+        if node.song is not None:
             flags = flags | QtCore.Qt.ItemIsSelectable
             flags = flags | QtCore.Qt.ItemIsDragEnabled
         return flags
     
-    @classmethod
-    def pixmap(cls, iconName):
-        icon = KIcon(iconName)
-        pixmap = icon.pixmap(QSize(32, 32))
-        return pixmap.scaled(QSize(34, 34), Qt.IgnoreAspectRatio,
-                               Qt.FastTransformation)
+    def hasChildren(self, parent = QModelIndex()):
+        
+        """ Returns whether a given index has children. """
+        
+        if parent.isValid():
+            node = parent.internalPointer()
+        else:
+            node = self.__root
+        return node.song is None
+    
+    def canFetchMore(self, parent):
+        
+        """
+        Returns whether a given parent index
+        is ready to fetch.
+        """
+   
+        if parent.isValid():
+            node = parent.internalPointer()
+        else:
+            node = self.__root
+        
+        if node.song is not None:
+            return False
+        
+        return not node.isFetched
+    
+    def fetchMore(self, parent):
+        
+        """
+        Given an index, populates it with children.
+        """
+        
+        if parent.isValid():
+            node = parent.internalPointer()
+        else:
+            node = self.__root
+        
+        rows = node.fetch()
+        
+        self.beginInsertRows(parent, 0, len(rows) - 1)
+        
+        for row in rows:
+            node.append(row)
+        
+        node.isFetched = True
+        self.endInsertRows()
+
+
+class NodeController(object):
+    
+    """
+    Provides tree node functions for labels, icons, and fetching.
+    """
+    
+    # Icons are looked up by name and by mbid.
+    icons = {}
+    icons["folder-documents"] = QIcon(KIcon("folder-documents"))
+    icons["server-database"] = QIcon(KIcon("server-database"))
+    icons["drive-harddisk"] = QIcon(KIcon("drive-harddisk"))
+    
+    def fetch(self):
+        """ Returns rows fetched from the node. """
+        return []
+    
+    @property
+    def label(self):
+        """ Returns the node's label. """
+        return ""
+    
+    @property
+    def icon(self):
+        """ Returns the node's icon. """
+        return None
+    
+    @property
+    def node(self):
+        """ Returns the node. """
+        return self.__node
+    
+    @node.setter
+    def node(self, value):
+        """ Sets the node. """
+        self.__node = value
+
+class PlaylistsController(NodeController):
+    
+    """ Controller for the Playlists node. """
+    
+    @property
+    def icon(self):
+        """ Returns the icon. """
+        return self.icons["folder-documents"]
+    
+    @property
+    def label(self):
+        return "Playlists"
+
+class ArtistsController(NodeController):
+    
+    """ Controller for the Artists node. """
+    
+    @property
+    def icon(self):
+        """ Returns the icon. """
+        return self.icons["server-database"]
+    
+    @property
+    def label(self):
+        return "Artists"
+
+class AlbumsController(NodeController):
+    
+    """ Controller for the Albums node. """
+    
+    @property
+    def icon(self):
+        """ Returns the icon. """
+        return self.icons["server-database"]
+    
+    @property
+    def label(self):
+        return "Albums"
+
+class GenresController(NodeController):
+    
+    """ Controller for the Genres node. """
+    
+    @property
+    def icon(self):
+        """ Returns the icon. """
+        return self.icons["server-database"]
+    
+    @property
+    def label(self):
+        return "Genres"
+
+class ComposersController(NodeController):
+    
+    """ Controller for the Composers node. """
+    
+    @property
+    def icon(self):
+        """ Returns the icon. """
+        return self.icons["server-database"]
+    
+    @property
+    def label(self):
+        return "Composers"
+
+class FoldersController(NodeController):
+    
+    """
+    Controller for the physical file paths
+    navigation node.
+    """
+    
+    @property
+    def icon(self):
+        """ Returns the icon. """
+        return self.icons["drive-harddisk"]
+    
+    @property
+    def label(self):
+        return "Directories"
+
+class RootController(object):
+    
+    def fetch(self):
+        nodes = []
+        nodes.append(TreeNode(PlaylistsController()))
+        nodes.append(TreeNode(ArtistsController()))
+        nodes.append(TreeNode(AlbumsController()))
+        nodes.append(TreeNode(GenresController()))
+        nodes.append(TreeNode(ComposersController()))
+        nodes.append(TreeNode(FoldersController()))
+        return nodes
 
 class Client0(QObject):
     """
@@ -2872,6 +3075,7 @@ class UI(kdeui.KMainWindow):
         
         treeModel = TreeModel()
         treeView = QTreeView()
+        treeView.setIconSize(QSize(34, 34))
         treeView.setModel(treeModel)
         self.tabs.addTab(treeView, "New")
 
