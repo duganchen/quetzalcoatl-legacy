@@ -42,18 +42,23 @@ from sys import maxint
 #    return x['file']
 #print sorted(l, key=key)
 
-def songTitle(song):
-    """ A song's title. """
-    if 'title' in song:
-        return song['title']
-    return os.path.splitext(os.path.basename(song["file"]))[0]
-
-def songKey(song):
-    """ The sorting key for the songs """
-    if 'track' in song:
-        return song['track']
 
 class Song(dict):
+    """ A song. """
+    @property
+    def title(self):
+        if 'title' in self:
+            return self['title']
+        return os.path.splitext(os.path.basename(self["file"]))[0]
+    
+    @property
+    def key(self):
+        """ Returns the sorting key. """
+        if 'track' in self:
+            return self['track']
+        return self.title
+
+class AlbumSong(Song):
     
     """ A song. """
     
@@ -74,19 +79,28 @@ class Song(dict):
     
     def __ge__(self, other):
         return self.key >= other.key
-        
-    @property
-    def title(self):
-        if 'title' in self:
-            return self['title']
-        return os.path.splitext(os.path.basename(self["file"]))[0]
+
+class RandomSong(Song):
     
-    @property
-    def key(self):
-        """ Returns the sorting key. """
-        if 'track' in self:
-            return self['track']
-        return self.title
+    """ A song. Not in an album. """
+    
+    def __lt__(self, other):
+        return self.title < other.title
+    
+    def __le__(self, other):
+        return self.title <= other.title
+    
+    def __eq__(self, other):
+        return self.title == other.title
+    
+    def __ne__(self, other):
+        return self.title != other.title
+    
+    def __gt__(self, other):
+        return self.title > other.title
+    
+    def __ge__(self, other):
+        return self.title >= other.title
 
 ### Two classes to use to refactor.
 
@@ -273,7 +287,7 @@ class SanitizedClient(object):
             if not character.isdigit():
                 break
         try:
-            result = int(stripped[:end + 1])
+            result = int(stripped[:end])
         except ValueError:
             pass
         return result
@@ -305,6 +319,12 @@ class SanitizedClient(object):
         for key, value in dictionary.items():
             if key in self.__sanitizers:
                 dictionary[key] = self.__sanitizers[key](value)
+                try:
+                    if 'track' in dictionary:
+                        try:
+                            int(dictionary['track'])
+                        except:
+                            del dictionary['track']
     
     def __getattr__(self, attr):
         attribute = getattr(self.__client, attr)
@@ -721,17 +741,39 @@ class ArtistAlbumController(NodeController):
         > Twilight of the Thunder God
     """
     def __init__(self, client, artist, album):
-        """ Initialies the controller. """
+        """ Initializes the controller. """
         super(ArtistAlbumController, self).__init__(client)
         self.__artist = artist
         self.__album = album
     
     def fetch(self):
         """ Fetches the songs. """
-        
         f = lambda x: 'artist' in x and x['artist'] == self.__artist
+        raw = self.client.find("album", self.__album)
         song = lambda song: TreeNode(SongController(self.client, song))
-        return map(song, sorted(filter(f, self.client.find("album", self.__album))))
+        return map(song, sorted(map(AlbumSong, filter(f, raw))))
+        
+    @property
+    def icon(self):
+        """ Returns the icon. """
+        return self.icons["media-optical-audio"]
+    
+    @property
+    def label(self):
+        """ Returns the label. """
+        return self.__album
+
+class ArtistSongsController(NodeController):
+    """ Artists > Amon Amarth > All Songs """
+    def __init__(self, client, artist):
+        """ Initializes the controller. """
+        super(ArtistSongsController, self).__init__(client)
+        self.__artist = artist
+    
+    def fetch(self):
+        """ Fetches the songs. """
+        
+        return []
         
     @property
     def icon(self):
