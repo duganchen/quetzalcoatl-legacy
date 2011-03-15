@@ -22,6 +22,7 @@ from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
 from PyQt4.QtGui import QIcon, QTreeView
 from PyKDE4.kdeui import KIcon
 import socket
+from sys import maxint
 
 
 
@@ -246,7 +247,7 @@ class SanitizedClient(object):
     def __getattr__(self, attr):
         attribute = getattr(self.__client, attr)
         if hasattr(attribute, "__call__"):
-            return lambda *args: self.__command(attribute, *args)
+            return lambda * args: self.__command(attribute, *args)
         return attribute
 
 
@@ -315,7 +316,7 @@ class TreeNode(object):
         """
         
         if role == Qt.DisplayRole:
-            return self.__controller.label
+            return self.__controller.label.decode("utf-8")
         
         if role == Qt.DecorationRole:
             return self.__controller.icon
@@ -346,12 +347,7 @@ class TreeNode(object):
         Returns none if the node doesn't have a song
         (i.e. if it's a directory).
         """
-        return self.__song
-    
-    @song.setter
-    def song(self, value):
-        """ Sets the node's song. """
-        self.__song = value
+        return self.__controller.song
     
     @property
     def isFetched(self):
@@ -376,10 +372,10 @@ class TreeModel(QtCore.QAbstractItemModel):
     
     # http://benjamin-meyer.blogspot.com/2006/10/dynamic-models.html
 
-    def __init__(self, parent = None):
+    def __init__(self, controller, parent=None):
         """ Initializes the model. """
         super(TreeModel, self).__init__(parent)
-        self.__root = TreeNode(RootController())
+        self.__root = TreeNode(controller)
         self.__root.isFetched = False
     
     def rowCount(self, parent):
@@ -410,7 +406,7 @@ class TreeModel(QtCore.QAbstractItemModel):
         return self.createIndex(grandparentNode.row(parentNode),
                                 0, parentNode)
     
-    def data(self, index, role = Qt.DisplayRole):
+    def data(self, index, role=Qt.DisplayRole):
         
         """ Returns data for the given index and role. """
         
@@ -419,7 +415,7 @@ class TreeModel(QtCore.QAbstractItemModel):
         node = index.internalPointer()
         return node.data(index, role)
     
-    def index(self, row, column, parent = QModelIndex()):
+    def index(self, row, column, parent=QModelIndex()):
         
         """ returns an index for the given parameters. """
         
@@ -442,7 +438,7 @@ class TreeModel(QtCore.QAbstractItemModel):
             flags = flags | QtCore.Qt.ItemIsDragEnabled
         return flags
     
-    def hasChildren(self, parent = QModelIndex()):
+    def hasChildren(self, parent=QModelIndex()):
         
         """ Returns whether a given index has children. """
         
@@ -499,18 +495,25 @@ class NodeController(object):
     
     # Icons are looked up by name and by mbid.
     icons = {}
+    icons["audio-x-generic"] = QIcon(KIcon("audio-x-generic"))
     icons["folder-documents"] = QIcon(KIcon("folder-documents"))
     icons["server-database"] = QIcon(KIcon("server-database"))
     icons["drive-harddisk"] = QIcon(KIcon("drive-harddisk"))
+    icons["folder-sound"] = QIcon(KIcon("folder-sound"))
+    icons["media-optical-audio"] = QIcon(KIcon("media-optical-audio"))
+    
+    def __init__(self, client):
+        """ Creates a controller for the specified client. """
+        self.__client = client
+    
+    @property
+    def client(self):
+        """ Returns the client. """
+        return self.__client
     
     def fetch(self):
         """ Returns rows fetched from the node. """
         return []
-    
-    @property
-    def label(self):
-        """ Returns the node's label. """
-        return ""
     
     @property
     def icon(self):
@@ -518,18 +521,39 @@ class NodeController(object):
         return None
     
     @property
-    def node(self):
-        """ Returns the node. """
-        return self.__node
+    def label(self):
+        """ Returns the node's label. """
+        return ""
     
-    @node.setter
-    def node(self, value):
-        """ Sets the node. """
-        self.__node = value
+    @property
+    def song(self):
+        """ Returns the song (None for directories). """
+        return None
+
+
+class RootController(NodeController):
+    
+    """
+    The controller for the navigation root.
+    """
+    
+    def fetch(self):
+        nodes = []
+        nodes.append(TreeNode(PlaylistsController(self.client)))
+        nodes.append(TreeNode(ArtistsController(self.client)))
+        nodes.append(TreeNode(AlbumsController(self.client)))
+        nodes.append(TreeNode(GenresController(self.client)))
+        nodes.append(TreeNode(ComposersController(self.client)))
+        nodes.append(TreeNode(FoldersController(self.client)))
+        return nodes
+
 
 class PlaylistsController(NodeController):
     
     """ Controller for the Playlists node. """
+    
+    def __init__(self, client):
+        self.__client = client
     
     @property
     def icon(self):
@@ -543,6 +567,15 @@ class PlaylistsController(NodeController):
 class ArtistsController(NodeController):
     
     """ Controller for the Artists node. """
+    
+    def fetch(self):
+        """ Fetches and returns artists. """
+        nodes = []
+        for artist in sorted(self.client.list('artist')):
+            controller = ArtistController(self.client, artist)
+            nodes.append(TreeNode(controller))
+        return nodes
+
     
     @property
     def icon(self):
@@ -608,17 +641,88 @@ class FoldersController(NodeController):
     def label(self):
         return "Directories"
 
-class RootController(object):
+class ArtistController(NodeController):
+    
+    """ A controller for a node for an artist. """
+    
+    def __init__(self, client, artist):
+        """ Initializes the node. """
+        super(ArtistController, self).__init__(client)
+        self.__artist = artist
     
     def fetch(self):
+        """ Returns the artist's albums. """
         nodes = []
-        nodes.append(TreeNode(PlaylistsController()))
-        nodes.append(TreeNode(ArtistsController()))
-        nodes.append(TreeNode(AlbumsController()))
-        nodes.append(TreeNode(GenresController()))
-        nodes.append(TreeNode(ComposersController()))
-        nodes.append(TreeNode(FoldersController()))
+        for album in sorted(self.client.list("album", self.__artist)):
+            controller = ArtistAlbumController(self.client,
+                                               self.__artist,
+                                               album)
+            nodes.append(TreeNode(controller))
         return nodes
+    
+    @property
+    def icon(self):
+        """ Returns the icon. """
+        return self.icons["folder-sound"]
+    
+    @property
+    def label(self):
+        """ Returns the label, display-ready. """
+        return self.__artist
+
+
+class ArtistAlbumController(NodeController):
+    """ Artists
+        > Amon Amarth
+        > Twilight of the Thunder God
+    """
+    def __init__(self, client, artist, album):
+        """ Initialies the controller. """
+        super(ArtistAlbumController, self).__init__(client)
+        self.__artist = artist
+        self.__album = album
+    
+    def fetch(self):
+        """ Fetches the songs. """
+        f = lambda x: x["artist"] == self.__artist
+        songs = self.client.find("album", self.__album)
+        nodes = []
+        for song in sorted(filter(f, songs)):
+            controller = SongController(self.client, song)
+            nodes.append(TreeNode(controller))
+        return nodes 
+    @property
+    def icon(self):
+        """ Returns the icon. """
+        return self.icons["media-optical-audio"]
+    
+    @property
+    def label(self):
+        """ Returns the label. """
+        return self.__album
+
+
+class SongController(NodeController):
+    """ A song. Left side. """
+    def __init__(self, client, song):
+        """ Initializes the controller. """
+        super(SongController, self).__init__(client)
+        self.__song = song
+    
+    @property
+    def icon(self):
+        """ Returns the icon. """
+        return self.icons["audio-x-generic"]
+    
+    @property
+    def label(self):
+        """ Returns the label. """
+        return self.__song["title"]
+    
+    @property
+    def song(self):
+        """ Returns the song. """
+        return self.__song
 
 class Client0(QObject):
     """
@@ -638,7 +742,7 @@ class Client0(QObject):
     time = pyqtSignal(TimeSpan, TimeSpan)
     songid = pyqtSignal(int)
     
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         """
         Initializes the Client.
         """
@@ -661,7 +765,7 @@ class Client0(QObject):
         attribute = getattr(self.__poller, attr)
         if not hasattr(attribute, "__call__"):
             return attribute
-        return lambda *args: self.__wrapper(attribute, *args)
+        return lambda * args: self.__wrapper(attribute, *args)
     
     def __wrapper(self, method, *args):
         """
@@ -902,7 +1006,7 @@ class Client(object):
         return not cls.client is None
 
     @classmethod
-    def cmd(cls, command, a = None, b = None, c = None):
+    def cmd(cls, command, a=None, b=None, c=None):
         if c is not None:
             return getattr(cls.client, command)(str(a), str(b), str(c))
         if b is not None:
@@ -917,7 +1021,7 @@ class IdleThread(QtCore.QThread):
     Deprecated. To be moved into the client class.
     """
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super(IdleThread, self).__init__(parent)
         self.mpdClient = None
 
@@ -946,7 +1050,7 @@ class Idler(QtCore.QObject):
     Deprecated. To be moved into the Client class.
     """
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super(Idler, self).__init__(parent)
         self.options = Options()
         self.idleClient = None
@@ -971,7 +1075,7 @@ class Idler(QtCore.QObject):
             pass
 
     def setPlaylistsChanged(self, playlists):
-        sortedList = sorted(playlists, key = self.sortingKey)
+        sortedList = sorted(playlists, key=self.sortingKey)
         self.emit(QtCore.SIGNAL("playlists"), sortedList)
 
     def sortingKey(self, element):
@@ -1054,7 +1158,7 @@ class Connector(QtCore.QObject):
             connected = True
         except (MPDError, socket.error) as e:
             Client.delete()
-            kdeui.KMessageBox.detailedError(self.parent(),\
+            kdeui.KMessageBox.detailedError(self.parent(), \
             "Cannot connect to MPD", str(e), "Cannot Connect")
 
         if connected:
@@ -1075,7 +1179,7 @@ class Connector(QtCore.QObject):
 
     def setBroken(self, e):
         self.disconnectFromClient()
-        kdeui.KMessageBox.detailedError(self.parent(),\
+        kdeui.KMessageBox.detailedError(self.parent(), \
         "Connection Lost", str(e), "Connection Lost")
 
     def disconnectFromClient(self):
@@ -1090,7 +1194,7 @@ class Connector(QtCore.QObject):
         Client.delete()
         self.idler.stop()
 
-    def addConnectable(self, connectable, updateable = False):
+    def addConnectable(self, connectable, updateable=False):
         connectable.setConnector(self)
         self.connectables.append(connectable)
         if updateable:
@@ -1100,7 +1204,7 @@ class Connector(QtCore.QObject):
         try:
             if Client.exists():
                 playlists = Client.cmd("listplaylists")
-                sortedPlaylists = sorted(playlists, key = self.sortingKey)
+                sortedPlaylists = sorted(playlists, key=self.sortingKey)
                 self.playlistModel.setPlaylists(sortedPlaylists)
         except (MPDError, socket.error) as e:
             self.setBroken(e)
@@ -1151,12 +1255,12 @@ class Configurer(kdeui.KDialog):
         self.password.setPasswordMode(True)
         layout.addRow(self.tr("Pass&word:"), self.password)
 
-        self.connect(self.pwCheck, QtCore.SIGNAL("stateChanged(int)"),\
+        self.connect(self.pwCheck, QtCore.SIGNAL("stateChanged(int)"), \
         self.togglePassword)
 
-        self.connect(self, QtCore.SIGNAL("okClicked()"), self,\
+        self.connect(self, QtCore.SIGNAL("okClicked()"), self, \
         QtCore.SLOT("accept()"))
-        self.connect(self, QtCore.SIGNAL("cancelClicked()"), self,\
+        self.connect(self, QtCore.SIGNAL("cancelClicked()"), self, \
         QtCore.SLOT("reject()"))
         self.connect(self, QtCore.SIGNAL("defaultClicked()"), self.defaults)
 
@@ -1171,7 +1275,7 @@ class Configurer(kdeui.KDialog):
         self.volume.setMinimum(0)
         self.volume.setMaximum(100)
         layout.addRow("&Volume", self.volume)
-        self.connect(self.tabs, QtCore.SIGNAL("currentChanged(int)"),\
+        self.connect(self.tabs, QtCore.SIGNAL("currentChanged(int)"), \
         self.changeTabs)
 
     def changeTabs(self, index):
@@ -1244,7 +1348,7 @@ class Node(object):
     The TreeNode class is to deprecate this.
     """
     
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         self.nodeParent = parent
         self.children = []
         self.isALeaf = False
@@ -1317,7 +1421,7 @@ class Node(object):
 
 class FetchingNode(Node):
 
-    def __init__(self, fetcher, data = None, parent = None):
+    def __init__(self, fetcher, data=None, parent=None):
         super(FetchingNode, self).__init__(parent)
         fetcher.setNode(self)
         self.fetcher = fetcher
@@ -1364,7 +1468,7 @@ class FetchingNode(Node):
 
 class SongNode(Node):
 
-    def __init__(self, song, parent = None):
+    def __init__(self, song, parent=None):
         super(SongNode, self).__init__(parent)
         self.song = song
         self.setLeaf(True)
@@ -1388,7 +1492,7 @@ class SongNode(Node):
 
 class PlaylistNode(FetchingNode):
 
-    def __init__(self, playlist, parent = None):
+    def __init__(self, playlist, parent=None):
         fetcher = PlaylistSongsFetcher(playlist["playlist"])
         fetcher.setNode(self)
         super(PlaylistNode, self).__init__(fetcher, playlist, parent)
@@ -1423,7 +1527,7 @@ class MenuFetcher(Fetcher):
         super(MenuFetcher, self).__init__()
 
     def preFetch(self):
-        for item in sorted(self.list(), key = str.lower):
+        for item in sorted(self.list(), key=str.lower):
             self.addNode(self.createNode(item))
 
     def list(self):
@@ -1440,7 +1544,7 @@ class ListFetcher(Fetcher):
         self.type = type
 
     def preFetch(self):
-        for item in sorted(self.list(self.type), key = str.lower):
+        for item in sorted(self.list(self.type), key=str.lower):
             self.addNode(self.createNode(item))
 
     def list(self, type):
@@ -1528,7 +1632,7 @@ class GenreArtistAlbumsFetcher(MenuFetcher):
 
 class SongsFetcher(Fetcher):
 
-    def __init__(self, client = None):
+    def __init__(self, client=None):
         super(SongsFetcher, self).__init__()
 
     def cmp(self, a, b):
@@ -1649,7 +1753,7 @@ class ArtistAlbumsFetcher(MenuFetcher):
         self.artist = artist
 
     def preFetch(self):
-        node = FetchingNode(ArtistSongsFetcher(self.artist), "All Songs",\
+        node = FetchingNode(ArtistSongsFetcher(self.artist), "All Songs", \
         self.node())
         node.setFetched(False)
         self.addNode(node)
@@ -1708,7 +1812,7 @@ class ComposerAlbumsFetcher(MenuFetcher):
         self.composer = composer
 
     def preFetch(self):
-        node = FetchingNode(ComposerSongsFetcher(self.composer), "All Songs",\
+        node = FetchingNode(ComposerSongsFetcher(self.composer), "All Songs", \
         self.node())
         node.setFetched(False)
         self.addNode(node)
@@ -1826,7 +1930,7 @@ class OneUri(object):
 
 class DatabaseModel(QtCore.QAbstractItemModel):
 
-    def __init__(self, root, uriFetcher, parent = None):
+    def __init__(self, root, uriFetcher, parent=None):
         super(DatabaseModel, self).__init__(parent)
         self.root = root
         self.uriFetcher = uriFetcher
@@ -1900,7 +2004,7 @@ class DatabaseModel(QtCore.QAbstractItemModel):
         self.reset()
 
     def clientDisconnect(self):
-        self.beginRemoveRows(QtCore.QModelIndex(), 0,\
+        self.beginRemoveRows(QtCore.QModelIndex(), 0, \
         self.root.childCount() - 1)
         self.root.clientDisconnect()
         self.endRemoveRows()
@@ -1955,11 +2059,11 @@ class DatabaseModel(QtCore.QAbstractItemModel):
 
 class PlaylistsModel(DatabaseModel):
 
-    def __init__(self, uriFetcher, parent = None):
+    def __init__(self, uriFetcher, parent=None):
 
         # It doesn't matter which fetcher we choose, because we never use
         # it.
-        super(PlaylistsModel, self).__init__(FetchingNode(AllSongsFetcher()),\
+        super(PlaylistsModel, self).__init__(FetchingNode(AllSongsFetcher()), \
         uriFetcher, parent)
 
     def clientConnect(self):
@@ -1975,7 +2079,7 @@ class PlaylistsModel(DatabaseModel):
 
         # First we trim to size
         if newSize < oldSize:
-            self.beginRemoveRows(QtCore.QModelIndex(), newSize,\
+            self.beginRemoveRows(QtCore.QModelIndex(), newSize, \
             oldSize - 1)
             del self.root.children[newSize:oldSize]
             self.endRemoveRows()
@@ -1984,7 +2088,7 @@ class PlaylistsModel(DatabaseModel):
         if oldSize < newSize:
             self.beginInsertRows(QtCore.QModelIndex(), oldSize, newSize - 1)
             for i in xrange(oldSize, newSize):
-                self.root.children.append(PlaylistNode(playlists[i],\
+                self.root.children.append(PlaylistNode(playlists[i], \
                 self.root))
             self.endInsertRows()
 
@@ -2030,7 +2134,7 @@ class PlaylistsModel(DatabaseModel):
 
 class DatabaseView(QtGui.QTreeView):
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super(DatabaseView, self).__init__(parent)
 
         self.setHeaderHidden(True)
@@ -2049,7 +2153,7 @@ class DatabaseView(QtGui.QTreeView):
         self.setEnabled(False)
 
     def setModel(self, model):
-        self.connect(self, QtCore.SIGNAL("doubleClicked(QModelIndex)"),\
+        self.connect(self, QtCore.SIGNAL("doubleClicked(QModelIndex)"), \
         model.sendUris)
 
         # Used only in the Playlists Model.
@@ -2063,7 +2167,7 @@ class DatabaseView(QtGui.QTreeView):
                 node = index.internalPointer()
                 if node.isLeaf():
 
-                    tags = [("artist", "Artists: "), ("album", "Album: "),\
+                    tags = [("artist", "Artists: "), ("album", "Album: "), \
                     ("genre", "Genre: "), ("composer", "Composer: ")]
 
                     text = ""
@@ -2082,7 +2186,7 @@ class DatabaseView(QtGui.QTreeView):
 
 class PlaylistsView(DatabaseView):
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super(PlaylistsView, self).__init__(parent)
         self.actions = []
         delete = QtGui.QAction("Delete", self)
@@ -2112,7 +2216,7 @@ class PlaylistsView(DatabaseView):
 
 class PlaylistsDelegate(QtGui.QStyledItemDelegate):
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super(PlaylistsDelegate, self).__init__(parent)
 
     def createEditor(self, parent, option, index):
@@ -2134,17 +2238,17 @@ class PlaylistModel(QtCore.QAbstractItemModel):
     NO_VERSION = -32768
     NO_SONGID = -32768
 
-    def __init__(self, combinedTimeLabel, parent = None):
+    def __init__(self, combinedTimeLabel, parent=None):
         super(PlaylistModel, self).__init__(parent)
         self.ids = []
         self.version = PlaylistModel.NO_VERSION
         self.songid = PlaylistModel.NO_SONGID
         self.selectedLength = combinedTimeLabel
 
-    def rowCount(self, parent = QtCore.QModelIndex()):
+    def rowCount(self, parent=QtCore.QModelIndex()):
         return len(self.ids)
 
-    def columnCount(self, parent = QtCore.QModelIndex()):
+    def columnCount(self, parent=QtCore.QModelIndex()):
         return 2
 
     def setConnector(self, connector):
@@ -2162,7 +2266,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
             del self.ids[:]
             self.endRemoveRows()
 
-    def data(self, index, role = QtCore.Qt.DisplayRole):
+    def data(self, index, role=QtCore.Qt.DisplayRole):
         try:
             if not index.isValid():
                 return QtCore.QVariant()
@@ -2196,7 +2300,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
         if index.isValid():
             f = f | QtCore.Qt.ItemIsEnabled
             if index.column() == 0:
-                f = f | QtCore.Qt.ItemIsSelectable |\
+                f = f | QtCore.Qt.ItemIsSelectable | \
                 QtCore.Qt.ItemIsDragEnabled
         else:
             f = f | QtCore.Qt.ItemIsDropEnabled
@@ -2227,7 +2331,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
 
             if data.hasFormat("application/x-quetzalcoatl-rows"):
                 encodedData = data.data("application/x-quetzalcoatl-rows")
-                stream = QtCore.QDataStream(encodedData,\
+                stream = QtCore.QDataStream(encodedData, \
                 QtCore.QIODevice.ReadOnly)
                 srcIndexes = []
                 while not stream.atEnd():
@@ -2247,7 +2351,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
 
             if data.hasFormat("application/x-quetzalcoatl-uris"):
                 encodedData = data.data("application/x-quetzalcoatl-uris")
-                stream = QtCore.QDataStream(encodedData,\
+                stream = QtCore.QDataStream(encodedData, \
                 QtCore.QIODevice.ReadOnly)
 
                 # If the model is empty, -1 is passed into row: >.<
@@ -2257,7 +2361,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                     insertAt = row
                 while not stream.atEnd():
                     uri = stream.readString()
-                    self.beginInsertRows(QtCore.QModelIndex(), insertAt,\
+                    self.beginInsertRows(QtCore.QModelIndex(), insertAt, \
                     insertAt)
                     id = Client.cmd("addid", uri, insertAt)
                     self.ids.insert(insertAt, id)
@@ -2300,8 +2404,8 @@ class PlaylistModel(QtCore.QAbstractItemModel):
             self.ids[i] = self.ids[i + step]
         self.ids[destIndex] = id
         self.emit(QtCore.SIGNAL(\
-        "dataChanged(QModelIndex, QModelIndex)"),\
-        self.row(firstIndex, 0, QtCore.QModelIndex()),\
+        "dataChanged(QModelIndex, QModelIndex)"), \
+        self.row(firstIndex, 0, QtCore.QModelIndex()), \
         self.row(lastIndex, 1, QtCore.QModelIndex()))
 
     def update(self, status):
@@ -2312,7 +2416,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
             if version <> self.version:
                 oldSize = len(self.ids)
                 if size < oldSize:
-                    self.beginRemoveRows(QtCore.QModelIndex(), size,\
+                    self.beginRemoveRows(QtCore.QModelIndex(), size, \
                     oldSize - 1)
                     del self.ids[size:oldSize]
                     self.endRemoveRows()
@@ -2324,8 +2428,8 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                     if pos < len(self.ids):
                         self.ids[pos] = id
                         self.emit(QtCore.SIGNAL(
-                        "dataChanged(QModelIndex, QModelIndex)"),\
-                       self.row(pos, 0, QtCore.QModelIndex()),\
+                        "dataChanged(QModelIndex, QModelIndex)"), \
+                       self.row(pos, 0, QtCore.QModelIndex()), \
                         self.row(pos, 1, QtCore.QModelIndex()))
                     else:
                         self.beginInsertRows(QtCore.QModelIndex(),
@@ -2342,8 +2446,8 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                     i = self.ids.row(self.songid)
                     self.songid = PlaylistModel.NO_SONGID
                     self.emit(QtCore.SIGNAL(\
-                    "dataChanged(QModelIndex, QModelIndex)"),\
-                    self.row(i, 0, QtCore.QModelIndex()),\
+                    "dataChanged(QModelIndex, QModelIndex)"), \
+                    self.row(i, 0, QtCore.QModelIndex()), \
                     self.row(i, 1, QtCore.QModelIndex()))
                 except:
                     pass
@@ -2362,8 +2466,8 @@ class PlaylistModel(QtCore.QAbstractItemModel):
             try:
                 oldIndex = self.ids.row(oldId)
                 self.emit(QtCore.SIGNAL(\
-                "dataChanged(QModelIndex, QModelIndex)"),\
-                self.row(oldIndex, 0, QtCore.QModelIndex()),\
+                "dataChanged(QModelIndex, QModelIndex)"), \
+                self.row(oldIndex, 0, QtCore.QModelIndex()), \
                 self.row(oldIndex, 1, QtCore.QModelIndex()))
             except:
                 pass
@@ -2371,8 +2475,8 @@ class PlaylistModel(QtCore.QAbstractItemModel):
             try:
                 newIndex = self.ids.row(self.songid)
                 self.emit(QtCore.SIGNAL(\
-                "dataChanged(QModelIndex, QModelIndex)"),\
-                self.row(newIndex, 0, QtCore.QModelIndex()),\
+                "dataChanged(QModelIndex, QModelIndex)"), \
+                self.row(newIndex, 0, QtCore.QModelIndex()), \
                 self.row(newIndex, 1, QtCore.QModelIndex()))
             except:
                 # If the id in question is not found, the playlist is
@@ -2408,7 +2512,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                 run.append(row)
             else:
                 str(run[-1] - offset)
-                self.beginRemoveRows(QtCore.QModelIndex(), run[0] - offset,\
+                self.beginRemoveRows(QtCore.QModelIndex(), run[0] - offset, \
                 run[-1] - offset)
                 for rowInRun in run:
                     id = self.ids[rowInRun - offset]
@@ -2421,7 +2525,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
                 run = [row]
                 print "We start a new run: " + str(run)
         str(run[-1] - offset)
-        self.beginRemoveRows(QtCore.QModelIndex(), run[0] - offset,\
+        self.beginRemoveRows(QtCore.QModelIndex(), run[0] - offset, \
         run[-1] - offset)
         for rowInRun in run:
             id = self.ids[rowInRun - offset]
@@ -2455,7 +2559,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
     def parent(self, index):
         return QtCore.QModelIndex()
 
-    def headerData(self, section, orientation, role = QtCore.Qt.DisplayRole):
+    def headerData(self, section, orientation, role=QtCore.Qt.DisplayRole):
         if orientation == QtCore.Qt.Horizontal and \
         role == QtCore.Qt.DisplayRole:
             if section == 0:
@@ -2490,7 +2594,7 @@ class PlaylistModel(QtCore.QAbstractItemModel):
 
 class PlaylistView(QtGui.QTreeView):
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super(PlaylistView, self).__init__(parent)
         self.setEnabled(True)
         self.setDragEnabled(True)
@@ -2533,11 +2637,11 @@ class PlaylistView(QtGui.QTreeView):
         self.model().deleteRows(rows)
 
     def setModel(self, model):
-        self.connect(self, QtCore.SIGNAL("doubleClicked(QModelIndex)"),\
+        self.connect(self, QtCore.SIGNAL("doubleClicked(QModelIndex)"), \
         model.play)
         QtGui.QTreeView.setModel(self, model)
-        self.connect(self.selectionModel(),\
-        QtCore.SIGNAL("selectionChanged(QItemSelection, QItemSelection)"),\
+        self.connect(self.selectionModel(), \
+        QtCore.SIGNAL("selectionChanged(QItemSelection, QItemSelection)"), \
         self.setLabel)
 
     def play(self):
@@ -2562,7 +2666,7 @@ class PlaylistView(QtGui.QTreeView):
             index = self.indexAt(event.pos())
 
             if index.isValid():
-                tags = [("artist", "Artists: "), ("album", "Album: "),\
+                tags = [("artist", "Artists: "), ("album", "Album: "), \
                 ("genre", "Genre: "), ("composer", "Composer: ")]
                 text = ""
                 first = True
@@ -2594,7 +2698,7 @@ class ConnectAction(QtGui.QAction):
 
     def setConnector(self, connector):
         self.connector = connector
-        self.connect(self, QtCore.SIGNAL("triggered()"),\
+        self.connect(self, QtCore.SIGNAL("triggered()"), \
         self.connector.toggleConnected)
 
     def clientConnect(self):
@@ -2609,10 +2713,10 @@ class ConnectAction(QtGui.QAction):
 class StopAction(QtGui.QAction):
 
     def __init__(self, parent):
-        super(StopAction, self).__init__(kdeui.KIcon("media-playback-stop"),\
+        super(StopAction, self).__init__(kdeui.KIcon("media-playback-stop"), \
         "Stop", parent)
         self.setEnabled(False)
-        self.connect(self, QtCore.SIGNAL("triggered()"),\
+        self.connect(self, QtCore.SIGNAL("triggered()"), \
         self.parentWidget().stopPlaying)
 
     def clientConnect(self):
@@ -2687,7 +2791,7 @@ class PlayPauseAction(QtGui.QAction):
 class PrevAction(QtGui.QAction):
 
     def __init__(self, parent):
-        super(PrevAction, self).__init__(kdeui.KIcon("media-skip-backward"),\
+        super(PrevAction, self).__init__(kdeui.KIcon("media-skip-backward"), \
         "Previous", parent)
         self.connect(self, QtCore.SIGNAL("triggered()"), self.prev)
         self.setEnabled(False)
@@ -2712,7 +2816,7 @@ class PrevAction(QtGui.QAction):
 class NextAction(QtGui.QAction):
 
     def __init__(self, parent):
-        super(NextAction, self).__init__(kdeui.KIcon("media-skip-forward"),\
+        super(NextAction, self).__init__(kdeui.KIcon("media-skip-forward"), \
         "Next", parent)
         self.connect(self, QtCore.SIGNAL("triggered()"), self.next)
         self.setEnabled(False)
@@ -2797,7 +2901,7 @@ class RepeatAction(QtGui.QAction):
 class SaveAction(QtGui.QAction):
 
     def __init__(self, parent):
-        super(SaveAction, self).__init__(kdeui.KIcon("document-save"),\
+        super(SaveAction, self).__init__(kdeui.KIcon("document-save"), \
         "Save Playlist", parent)
         self.connect(self, QtCore.SIGNAL("triggered()"), self.save)
         self.setEnabled(False)
@@ -2820,7 +2924,7 @@ class SaveAction(QtGui.QAction):
 
 class PlaylistSaver(kdeui.KDialog):
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super(PlaylistSaver, self).__init__(parent)
 
         self.setCaption("Save Playlist")
@@ -2832,7 +2936,7 @@ class PlaylistSaver(kdeui.KDialog):
 
         layout.addRow(self.tr("&Name"), self.name)
         self.setMainWidget(body)
-        self.connect(self, QtCore.SIGNAL("okayClicked()"), self,\
+        self.connect(self, QtCore.SIGNAL("okayClicked()"), self, \
         QtCore.SLOT("accept()"))
 
     def setConnector(self, connector):
@@ -2874,7 +2978,7 @@ class PlaylistSaver(kdeui.KDialog):
         return True
 
     @classmethod
-    def createLineEdit(cls, parent, inDelegate = False):
+    def createLineEdit(cls, parent, inDelegate=False):
         # Again, also called by the Playlists Delegate.
         # The inView parameter is there because the PlaylistsDelegate
         # needs a KLineEdit created differently.
@@ -2896,7 +3000,7 @@ class ArtLabel(QtGui.QLabel):
     A QLabel that scales album art images properly.
     """
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         
         """ Initializes the art label. """
         
@@ -2914,7 +3018,7 @@ class ArtLabel(QtGui.QLabel):
         pixmapHeight = pixmap.height()
         
         if pixmapHeight > 0:
-            pixmapRatio  = pixmapWidth / pixmapHeight
+            pixmapRatio = pixmapWidth / pixmapHeight
         else:
             pixmapRatio = pixmapWidth
 
@@ -2957,7 +3061,7 @@ class UI(kdeui.KMainWindow):
         toolBar.setToolBarsLocked(True)
         toolBar.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
 
-        toolBar.addAction(kdeui.KIcon("configure"), "Configure",\
+        toolBar.addAction(kdeui.KIcon("configure"), "Configure", \
         self.cfgDlg.exec_)
 
         connectAction = ConnectAction(self)
@@ -2994,7 +3098,7 @@ class UI(kdeui.KMainWindow):
         toolBar.setToolBarsLocked(True)
         toolBar.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
 
-        toolBar.addAction(kdeui.KIcon("configure"), "Configure",\
+        toolBar.addAction(kdeui.KIcon("configure"), "Configure", \
         self.cfgDlg.exec_)
 
         connectAction = ConnectAction(self)
@@ -3006,7 +3110,7 @@ class UI(kdeui.KMainWindow):
         toolBar.addAction(stopAction)
 
         self.playPauseAction = PlayPauseAction(self)
-        self.connector.addConnectable(self.playPauseAction,\
+        self.connector.addConnectable(self.playPauseAction, \
         Connector.UPDATEABLE)
         toolBar.addAction(self.playPauseAction)
 
@@ -3042,11 +3146,11 @@ class UI(kdeui.KMainWindow):
         self.slider = QtGui.QSlider(QtCore.Qt.Horizontal)
         self.slider.setEnabled(False)
         self.slider.setTracking(False)
-        self.connect(self.slider, QtCore.SIGNAL("valueChanged(int)"),\
+        self.connect(self.slider, QtCore.SIGNAL("valueChanged(int)"), \
         self.setSongTime)
-        self.connect(self.slider, QtCore.SIGNAL("sliderMoved(int)"),\
+        self.connect(self.slider, QtCore.SIGNAL("sliderMoved(int)"), \
         self.setDragging)
-        self.connect(self.slider, QtCore.SIGNAL("sliderReleased()"),\
+        self.connect(self.slider, QtCore.SIGNAL("sliderReleased()"), \
         self.setNotDragging)
         layout.addWidget(self.slider)
 
@@ -3073,14 +3177,17 @@ class UI(kdeui.KMainWindow):
         self.addTab(GenresFetcher(), AllUris(), "Genres")
         self.addTab(ComposersFetcher(), AllUris(), "Composers")
         
-        treeModel = TreeModel()
+        client0 = Client0()
+        client0.open("localhost", 6600)
+        
+        treeModel = TreeModel(RootController(client0))
         treeView = QTreeView()
         treeView.setIconSize(QSize(34, 34))
         treeView.setModel(treeModel)
         self.tabs.addTab(treeView, "New")
 
         self.playlistModel = PlaylistModel(combinedTime, self)
-        self.connector.addConnectable(self.playlistModel,\
+        self.connector.addConnectable(self.playlistModel, \
         Connector.UPDATEABLE)
         playlistSplitter = QtGui.QSplitter(splitter)
         playlistSplitter.setOrientation(QtCore.Qt.Vertical)
@@ -3089,11 +3196,11 @@ class UI(kdeui.KMainWindow):
         self.playlistView = PlaylistView(playlistSplitter)
         self.connector.addConnectable(self.playlistView)
         self.playlistView.setModel(self.playlistModel)
-        self.connect(self.playlistModel, QtCore.SIGNAL("playing"),\
+        self.connect(self.playlistModel, QtCore.SIGNAL("playing"), \
         self.setPlaying)
-        self.connect(self.playlistModel, QtCore.SIGNAL("saveable"),\
+        self.connect(self.playlistModel, QtCore.SIGNAL("saveable"), \
         saveAction.setEnabled)
-        self.connect(self.playlistModel, QtCore.SIGNAL("stopped"),\
+        self.connect(self.playlistModel, QtCore.SIGNAL("stopped"), \
         self.stopPlaying)
 
         self.connectDBModels()
@@ -3188,9 +3295,9 @@ class UI(kdeui.KMainWindow):
 
     def connectDBModels(self):
         for model in self.dbModels:
-            self.connect(model, QtCore.SIGNAL("uris"),\
+            self.connect(model, QtCore.SIGNAL("uris"), \
             self.playlistModel.setUris)
-        self.connect(self.playlistsModel, QtCore.SIGNAL("uris"),\
+        self.connect(self.playlistsModel, QtCore.SIGNAL("uris"), \
         self.playlistModel.setUris)
 
     def setDragging(self, value):
@@ -3211,7 +3318,7 @@ if __name__ == "__main__":
     text = kdecore.ki18n("none")
     homePage = "www.duganchen.ca"
     bugEmail = "see homepage"
-    aboutData = kdecore.KAboutData(appName, catalog, programName, version,\
+    aboutData = kdecore.KAboutData(appName, catalog, programName, version, \
     description, license, copyright, text, homePage, bugEmail)
 
     kdecore.KCmdLineArgs.init(sys.argv, aboutData)
