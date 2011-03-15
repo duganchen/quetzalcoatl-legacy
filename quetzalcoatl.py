@@ -697,12 +697,12 @@ class ArtistController(NodeController):
     
     def fetch(self):
         """ Returns the artist's albums. """
-
+        
+        raw = self.client.list('album', self.__artist)
         f = lambda x: len(x.strip()) > 0
         node = lambda album: TreeNode(ArtistAlbumController(self.client,
                                                 self.__artist, album))
-        albums = self.client.list("album", self.__artist)
-        return map(node, sorted(filter(f, albums)))
+        return map(node, sorted(filter(f, raw)))
     
     @property
     def icon(self):
@@ -728,11 +728,10 @@ class ArtistAlbumController(NodeController):
     
     def fetch(self):
         """ Fetches the songs. """
-
-        f = lambda x: x["artist"] == self.__artist
-        raw = self.client.find("album", self.__album)
+        
+        f = lambda x: 'artist' in x and x['artist'] == self.__artist
         song = lambda song: TreeNode(SongController(self.client, song))
-        return map(song, sorted(map(Song, filter(f, raw))))
+        return map(song, sorted(filter(f, self.client.find("album", self.__album))))
         
     @property
     def icon(self):
