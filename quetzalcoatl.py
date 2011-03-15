@@ -42,6 +42,51 @@ from sys import maxint
 #    return x['file']
 #print sorted(l, key=key)
 
+def songTitle(song):
+    """ A song's title. """
+    if 'title' in song:
+        return song['title']
+    return os.path.splitext(os.path.basename(song["file"]))[0]
+
+def songKey(song):
+    """ The sorting key for the songs """
+    if 'track' in song:
+        return song['track']
+
+class Song(dict):
+    
+    """ A song. """
+    
+    def __lt__(self, other):
+        return self.key < other.key
+    
+    def __le__(self, other):
+        return self.key <= other.key
+    
+    def __eq__(self, other):
+        return self.key == other.key
+    
+    def __ne__(self, other):
+        return self.key != other.key
+    
+    def __gt__(self, other):
+        return self.key > other.key
+    
+    def __ge__(self, other):
+        return self.key >= other.key
+        
+    @property
+    def title(self):
+        if 'title' in self:
+            return self['title']
+        return os.path.splitext(os.path.basename(self["file"]))[0]
+    
+    @property
+    def key(self):
+        """ Returns the sorting key. """
+        if 'track' in self:
+            return self['track']
+        return self.title
 
 ### Two classes to use to refactor.
 
@@ -355,9 +400,6 @@ class TreeNode(list):
         """
         return self.__controller.fetch()
 
-
-
-
 class TreeModel(QtCore.QAbstractItemModel):
 
     """
@@ -407,6 +449,7 @@ class TreeModel(QtCore.QAbstractItemModel):
         if not index.isValid():
             return None
         node = index.internalPointer()
+        
         return node.data(index, role)
     
     def index(self, row, column, parent=QModelIndex()):
@@ -494,6 +537,12 @@ class NodeController(object):
     icons["drive-harddisk"] = QIcon(KIcon("drive-harddisk"))
     icons["folder-sound"] = QIcon(KIcon("folder-sound"))
     icons["media-optical-audio"] = QIcon(KIcon("media-optical-audio"))
+    icons['.ac3'] = QIcon(KIcon('audio-x-ac3'))
+    icons['.flac'] = QIcon(KIcon('audio-x-flac'))
+    icons['.ogg'] = QIcon(KIcon('audio-x-flac+ogg'))
+    icons['.ra'] = QIcon(KIcon('audio-ac3'))
+    icons['.mid'] = QIcon(KIcon('audio-midi'))
+    icons['.wav'] = QIcon(KIcon('audio-x-wav'))
     
     def __init__(self, client):
         """ Creates a controller for the specified client. """
@@ -521,6 +570,11 @@ class NodeController(object):
     @property
     def song(self):
         """ Returns the song (None for directories). """
+        return None
+    
+    @property
+    def track(self):
+        """ Returns the track. Or None. """
         return None
 
 
@@ -676,9 +730,9 @@ class ArtistAlbumController(NodeController):
         """ Fetches the songs. """
 
         f = lambda x: x["artist"] == self.__artist
-        songs = self.client.find("album", self.__album)
+        raw = self.client.find("album", self.__album)
         song = lambda song: TreeNode(SongController(self.client, song))
-        return map(song, filter(f, songs))
+        return map(song, sorted(map(Song, filter(f, raw))))
         
     @property
     def icon(self):
@@ -689,6 +743,7 @@ class ArtistAlbumController(NodeController):
     def label(self):
         """ Returns the label. """
         return self.__album
+            
 
 
 class SongController(NodeController):
@@ -701,7 +756,13 @@ class SongController(NodeController):
     @property
     def icon(self):
         """ Returns the icon. """
-        return self.icons["audio-x-generic"]
+        
+        extension = os.path.splitext(self.__song['file'])[1].lower()
+        
+        try:
+            return self.icons[extension]
+        except:
+            return self.icons["audio-x-generic"]
     
     @property
     def label(self):
