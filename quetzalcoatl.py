@@ -279,18 +279,21 @@ class SanitizedClient(object):
         Given a string value for a 'track' key, returns the
         int value (if possible).
         """
-        end = 0
-        result = value
-        stripped = value.lstrip()
-        for index, character in enumerate(stripped):
-            end = index
-            if not character.isdigit():
-                break
         try:
-            result = int(stripped[:end])
-        except ValueError:
-            pass
-        return result
+            return int(value)
+        except:
+            end = 0
+            result = value
+            stripped = value.lstrip()
+            for index, character in enumerate(stripped):
+                end = index
+                if not character.isdigit():
+                    break
+            try:
+                result = int(stripped[:end])
+            except ValueError:
+                pass
+            return result
 
     def __command(self, method, *args):
 
@@ -319,12 +322,12 @@ class SanitizedClient(object):
         for key, value in dictionary.items():
             if key in self.__sanitizers:
                 dictionary[key] = self.__sanitizers[key](value)
-                try:
-                    if 'track' in dictionary:
-                        try:
-                            int(dictionary['track'])
-                        except:
-                            del dictionary['track']
+
+                if 'track' in dictionary:
+                    try:
+                        int(dictionary['track'])
+                    except:
+                        del dictionary['track']
     
     def __getattr__(self, attr):
         attribute = getattr(self.__client, attr)
@@ -722,7 +725,9 @@ class ArtistController(NodeController):
         f = lambda x: len(x.strip()) > 0
         node = lambda album: TreeNode(ArtistAlbumController(self.client,
                                                 self.__artist, album))
-        return map(node, sorted(filter(f, raw)))
+        result = [TreeNode(ArtistSongsController(self.client, self.__artist))]
+        result.extend(map(node, sorted(filter(f, raw))))
+        return result
     
     @property
     def icon(self):
@@ -772,18 +777,19 @@ class ArtistSongsController(NodeController):
     
     def fetch(self):
         """ Fetches the songs. """
-        
-        return []
+        raw = self.client.find('artist', self.__artist)
+        song = lambda song: TreeNode(SongController(self.client, song))
+        return map(song, sorted(map(RandomSong, raw)))
         
     @property
     def icon(self):
         """ Returns the icon. """
-        return self.icons["media-optical-audio"]
+        return self.icons["folder-sound"]
     
     @property
     def label(self):
         """ Returns the label. """
-        return self.__album
+        return "All Songs"
             
 
 
@@ -808,7 +814,7 @@ class SongController(NodeController):
     @property
     def label(self):
         """ Returns the label. """
-        return self.__song["title"]
+        return self.__song.title
     
     @property
     def song(self):
