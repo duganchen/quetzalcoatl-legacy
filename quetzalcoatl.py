@@ -25,6 +25,23 @@ import socket
 from sys import maxint
 
 
+#The following works for sorting songs:
+#
+#l = [
+#        {'track': 3, 'file': 'i'},
+#        {'track': 0, 'file': 'b'},
+#        {'track': 2, 'file': 'm'},
+#        {'file': 'c'},
+#        {'file': 'h'},
+#        {'file': '1'},
+#        ]
+#
+#def key(x):
+#    if 'track' in x:
+#        return x['track']
+#    return x['file']
+#print sorted(l, key=key)
+
 
 ### Two classes to use to refactor.
 
@@ -251,7 +268,7 @@ class SanitizedClient(object):
         return attribute
 
 
-class TreeNode(object):
+class TreeNode(list):
     
     """
     A node for the tree in the left side of the GUI.
@@ -261,7 +278,7 @@ class TreeNode(object):
         """
         Creates a TreeNode.
         """
-        self.__children = []
+        #self.__children = []
         self.__parent = None
         self.__icon = None
         self.__controller = controller
@@ -269,36 +286,10 @@ class TreeNode(object):
         self.__song = None
         self.__isFetched = False
 
-    def __len__(self):
-        """
-        Returns the number of children.
-        """
-        return len(self.__children)
-    
-    def __getitem__(self, key):
-        """ Returns the child with the row of key. """
-        return self.__children[key]
-    
-    def __setitem__(self, key, value):
-        """ Sets the child at key to value. """
-        self.__children[key] = value
-    
-    def __delitem__(self, key):
-        """ Removes the child with the specified key. """
-        del self.__children[key]
-    
-    def __iter__(self):
-        """ Returns an iterator. """
-        return self.__children.__iter__()
-    
-    def __reversed__(self):
-        """ Reverses the order of the children. """
-        self.__children.reverse()
-    
     def append(self, child):
         """ Appends a child to the node. """
         child.parent = self
-        self.__children.append(child)
+        super(TreeNode, self).append(child)
     
     @property
     def parent(self):
@@ -325,7 +316,7 @@ class TreeNode(object):
     
     def row(self, x):
         """ Returns the(row) of child node x. """
-        return self.__children.index(x)
+        return self.index(x)
     
     @property
     def icon(self):
@@ -363,6 +354,9 @@ class TreeNode(object):
         Fetches and returns data.
         """
         return self.__controller.fetch()
+
+
+
 
 class TreeModel(QtCore.QAbstractItemModel):
 
@@ -486,7 +480,6 @@ class TreeModel(QtCore.QAbstractItemModel):
         node.isFetched = True
         self.endInsertRows()
 
-
 class NodeController(object):
     
     """
@@ -570,13 +563,11 @@ class ArtistsController(NodeController):
     
     def fetch(self):
         """ Fetches and returns artists. """
-        nodes = []
-        for artist in sorted(self.client.list('artist')):
-            controller = ArtistController(self.client, artist)
-            nodes.append(TreeNode(controller))
-        return nodes
+        f = lambda x: len(x.strip()) > 0
+        artists = sorted(filter(f, self.client.list('artist')))
+        node = lambda artist: TreeNode(ArtistController(self.client, artist))
+        return map(node, artists)
 
-    
     @property
     def icon(self):
         """ Returns the icon. """
@@ -652,13 +643,12 @@ class ArtistController(NodeController):
     
     def fetch(self):
         """ Returns the artist's albums. """
-        nodes = []
-        for album in sorted(self.client.list("album", self.__artist)):
-            controller = ArtistAlbumController(self.client,
-                                               self.__artist,
-                                               album)
-            nodes.append(TreeNode(controller))
-        return nodes
+
+        f = lambda x: len(x.strip()) > 0
+        node = lambda album: TreeNode(ArtistAlbumController(self.client,
+                                                self.__artist, album))
+        albums = self.client.list("album", self.__artist)
+        return map(node, sorted(filter(f, albums)))
     
     @property
     def icon(self):
@@ -684,13 +674,12 @@ class ArtistAlbumController(NodeController):
     
     def fetch(self):
         """ Fetches the songs. """
+
         f = lambda x: x["artist"] == self.__artist
         songs = self.client.find("album", self.__album)
-        nodes = []
-        for song in sorted(filter(f, songs)):
-            controller = SongController(self.client, song)
-            nodes.append(TreeNode(controller))
-        return nodes 
+        song = lambda song: TreeNode(SongController(self.client, song))
+        return map(song, filter(f, songs))
+        
     @property
     def icon(self):
         """ Returns the icon. """
