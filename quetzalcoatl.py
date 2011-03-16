@@ -56,7 +56,7 @@ class Song(dict):
         """ Returns the sorting key. """
         if 'track' in self:
             return self['track']
-        return self.title
+        return self.title.lower()
 
 class AlbumSong(Song):
     
@@ -85,22 +85,22 @@ class RandomSong(Song):
     """ A song. Not in an album. """
     
     def __lt__(self, other):
-        return self.title < other.title
+        return self.title.lower() < other.title.lower()
     
     def __le__(self, other):
-        return self.title <= other.title
+        return self.title.lower() <= other.title.lower()
     
     def __eq__(self, other):
-        return self.title == other.title
+        return self.title.lower() == other.title.lower()
     
     def __ne__(self, other):
-        return self.title != other.title
+        return self.title.lower() != other.title.lower()
     
     def __gt__(self, other):
-        return self.title > other.title
+        return self.title.lower() > other.title.lower()
     
     def __ge__(self, other):
-        return self.title >= other.title
+        return self.title.lower() >= other.title.lower()
 
 ### Two classes to use to refactor.
 
@@ -641,7 +641,7 @@ class ArtistsController(NodeController):
     def fetch(self):
         """ Fetches and returns artists. """
         f = lambda x: len(x.strip()) > 0
-        artists = sorted(filter(f, self.client.list('artist')))
+        artists = sorted(filter(f, self.client.list('artist')), key=str.lower)
         node = lambda artist: TreeNode(ArtistController(self.client, artist))
         return map(node, artists)
 
@@ -726,7 +726,7 @@ class ArtistController(NodeController):
         node = lambda album: TreeNode(ArtistAlbumController(self.client,
                                                 self.__artist, album))
         result = [TreeNode(ArtistSongsController(self.client, self.__artist))]
-        result.extend(map(node, sorted(filter(f, raw))))
+        result.extend(map(node, sorted(filter(f, raw), key=str.lower)))
         return result
     
     @property
