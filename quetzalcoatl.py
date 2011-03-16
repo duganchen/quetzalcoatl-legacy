@@ -25,23 +25,16 @@ import socket
 from sys import maxint
 
 
-#The following works for sorting songs:
-#
-#l = [
-#        {'track': 3, 'file': 'i'},
-#        {'track': 0, 'file': 'b'},
-#        {'track': 2, 'file': 'm'},
-#        {'file': 'c'},
-#        {'file': 'h'},
-#        {'file': '1'},
-#        ]
-#
-#def key(x):
-#    if 'track' in x:
-#        return x['track']
-#    return x['file']
-#print sorted(l, key=key)
-
+# The root menu of my iPod video 5.5G is:
+# Playlists
+# Artists
+# Albums
+# Compilations
+# Songs
+# Podcasts
+# Genres
+# Composers
+# Audiobooks
 
 class Song(dict):
     """ A song. """
@@ -615,6 +608,8 @@ class RootController(NodeController):
         nodes.append(TreeNode(PlaylistsController(self.client)))
         nodes.append(TreeNode(ArtistsController(self.client)))
         nodes.append(TreeNode(AlbumsController(self.client)))
+        nodes.append(TreeNode(AlbumArtistsController(self.client)))
+        nodes.append(TreeNode(SongsController(self.client)))
         nodes.append(TreeNode(GenresController(self.client)))
         nodes.append(TreeNode(ComposersController(self.client)))
         nodes.append(TreeNode(FoldersController(self.client)))
@@ -677,6 +672,24 @@ class AlbumsController(NodeController):
     def label(self):
         return "Albums"
 
+class AlbumArtistsController(NodeController):
+    
+    @property
+    def icon(self):
+        return self.icons['server-database']
+    @property
+    def label(self):
+        return "Compilations"
+
+class SongsController(NodeController):
+    
+    @property
+    def icon(self):
+        return self.icons['server-database']
+    @property
+    def label(self):
+        return "Songs"
+
 class AlbumController(NodeController):
     """ Albums > Twilight of the Thunder God """
     def __init__(self, client, album):
@@ -705,7 +718,10 @@ class GenresController(NodeController):
     
     def fetch(self):
         """ Fetches the list of genres. """
-        
+        f = lambda x: len(x.strip()) > 0
+        raw = self.client.list('genre')
+        node = lambda genre: TreeNode(
+                    GenreArtistController(self.client, genre))
     
     @property
     def icon(self):
@@ -826,6 +842,11 @@ class ArtistSongsController(NodeController):
     def label(self):
         """ Returns the label. """
         return "All Songs"
+
+class GenreController(NodeController):
+    """ Genres > Viking Death Metal """
+    def __init__(self, genre):
+        self.__genre = genre
 
 class GenreArtistController(NodeController):
     """ Viking Death Metal > Amon Amarth """
