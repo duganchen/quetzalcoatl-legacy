@@ -430,84 +430,37 @@ class TreeModel(QtCore.QAbstractItemModel):
     """
     
     # http://benjamin-meyer.blogspot.com/2006/10/dynamic-models.html
-
+    
     def __init__(self, controller, parent=None):
         """ Initializes the model. """
         super(TreeModel, self).__init__(parent)
         self.__root = TreeNode(controller)
         self.__root.isFetched = False
+
+    def node(self, index):
+        """ Returns the node for the given index. """
+        if index.isValid():
+            return index.internalPointer()
+        return self.__root
     
     def rowCount(self, parent):
         """ Returns the number of rows. """
-        if parent.isValid():
-            parentNode = parent.internalPointer()
-        else:
-            parentNode = self.__root
-        return len(parentNode)
-
+        return len(self.node(parent))
+    
     def columnCount(self, parent):
         """ Returns the number of columns. """
         return 1
 
-    def parent(self, index):
-        
-        """ Given an index, returns its parent. """
-        
-        if not index.isValid():
-            return QModelIndex()
-        node = index.internalPointer()
-        parentNode = node.parent
-        if parentNode is None:
-            return QModelIndex()
-        grandparentNode = parentNode.parent
-        if grandparentNode is None:
-            return QModelIndex()
-        return self.createIndex(grandparentNode.row(parentNode),
-                                0, parentNode)
-    
-    def data(self, index, role=Qt.DisplayRole):
-        
-        """ Returns data for the given index and role. """
-        
-        if not index.isValid():
-            return None
-        node = index.internalPointer()
-        
-        return node.data(index, role)
-    
-    def index(self, row, column, parent=QModelIndex()):
-        
-        """ returns an index for the given parameters. """
-        
-        if not self.hasIndex(row, column, parent):
-            return QModelIndex()
-        if parent.isValid():
-            parentNode = parent.internalPointer()
-        else:
-            parentNode = self.__root
-        return self.createIndex(row, column, parentNode[row])
-    
-    def flags(self, index):
-        
-        """ Returns the behavior flags for the given index. """
-        
-        flags = QtCore.Qt.ItemIsEnabled
-        node = index.internalPointer()
-        if node.song is not None:
-            flags = flags | QtCore.Qt.ItemIsSelectable
-            flags = flags | QtCore.Qt.ItemIsDragEnabled
-        return flags
-    
     def hasChildren(self, parent=QModelIndex()):
         
         """ Returns whether a given index has children. """
         
-        if parent.isValid():
-            node = parent.internalPointer()
-        else:
-            node = self.__root
+        node = self.node(parent)
+        if not parent.isValid():
+            return len(node) > 0
+        
         return node.song is None
-    
+
     def canFetchMore(self, parent):
         
         """
@@ -515,16 +468,9 @@ class TreeModel(QtCore.QAbstractItemModel):
         is ready to fetch.
         """
    
-        if parent.isValid():
-            node = parent.internalPointer()
-        else:
-            node = self.__root
-        
-        if node.song is not None:
-            return False
-        
+        node = self.node(parent)
         return not node.isFetched
-    
+
     def fetchMore(self, parent):
         
         """
@@ -532,19 +478,76 @@ class TreeModel(QtCore.QAbstractItemModel):
         """
         
         if parent.isValid():
+            parentIndex = parent
             node = parent.internalPointer()
         else:
+            parentIndex = QModelIndex()
             node = self.__root
         
         rows = node.fetch()
         
-        self.beginInsertRows(parent, 0, len(rows) - 1)
+        self.beginInsertRows(parentIndex, 0, len(rows) - 1)
         
         for row in rows:
             node.append(row)
         
         node.isFetched = True
         self.endInsertRows()
+
+    def data(self, index, role=Qt.DisplayRole):
+        
+        """ Returns data for the given index and role. """
+        
+        if not index.isValid():
+            return None
+        node = self.node(index)
+        return node.data(index, role)
+
+    def flags(self, index):
+        
+        """ Returns the behavior flags for the given index. """
+        
+        flags = QtCore.Qt.ItemIsEnabled
+        if index.isValid():
+            node = self.node(index)
+            if node.song is not None:
+                flags = flags | QtCore.Qt.ItemIsSelectable
+                flags = flags | QtCore.Qt.ItemIsDragEnabled
+        return flags
+    
+    def parent(self, index):
+        
+        """ Given an index, returns its parent. """
+        
+        if not index.isValid():
+            return QModelIndex()
+        
+        node = index.internalPointer()
+        if node.parent is None or node.parent == self.__root:
+            return QModelIndex()
+        
+        grandparent = node.parent.parent
+        if grandparent is None:
+            return QModelIndex()
+        
+        try:
+            i = grandparent.index(node.parent)
+            return self.createIndex(i, 0, node.parent)
+        except:
+            return QModelIndex()
+
+    def index(self, row, column, parent=QModelIndex()):
+        
+        """ returns an index for the given parameters. """
+        
+        if not self.hasIndex(row, column, parent):
+            return QModelIndex()
+        
+        node = self.node(parent)
+        return self.createIndex(row, column, node[row])
+        
+        
+
 
 class NodeController(object):
     
