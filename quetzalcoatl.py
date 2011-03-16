@@ -661,6 +661,13 @@ class AlbumsController(NodeController):
     
     """ Controller for the Albums node. """
     
+    def fetch(self):
+        """ Fetches and returns albums. """
+        f = lambda x: len(x.strip()) > 0
+        raw = self.client.list('album')
+        cd = lambda cd: TreeNode(AlbumController(self.client, cd))
+        return map(cd, sorted(filter(f, raw), key=str.lower))
+    
     @property
     def icon(self):
         """ Returns the icon. """
@@ -670,9 +677,35 @@ class AlbumsController(NodeController):
     def label(self):
         return "Albums"
 
+class AlbumController(NodeController):
+    """ Albums > Twilight of the Thunder God """
+    def __init__(self, client, album):
+        """ Initializes the controller. """
+        super(AlbumController, self).__init__(client)
+        self.__album = album
+    
+    def fetch(self):
+        """ Fetches and returns the album's songs """
+        raw = self.client.find('album', self.__album)
+        node = lambda song: TreeNode(SongController(self.client, song))
+        return map(node, sorted(map(AlbumSong, raw)))
+        
+    
+    @property
+    def label(self):
+        return self.__album
+    
+    @property
+    def icon(self):
+        return self.icons['media-optical-audio']
+
 class GenresController(NodeController):
     
     """ Controller for the Genres node. """
+    
+    def fetch(self):
+        """ Fetches the list of genres. """
+        
     
     @property
     def icon(self):
@@ -793,7 +826,21 @@ class ArtistSongsController(NodeController):
     def label(self):
         """ Returns the label. """
         return "All Songs"
-            
+
+class GenreArtistController(NodeController):
+    """ Viking Death Metal > Amon Amarth """
+    
+    def __init__(self, client, genre):
+        super(GenreAristController, self).__init__(client)
+        self.__genre = genre
+    
+    @property
+    def icon(self):
+        return self.icons['folder-sound']
+    
+    @property
+    def label(self):
+        return self.__genre
 
 
 class SongController(NodeController):
