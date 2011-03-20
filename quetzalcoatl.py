@@ -697,7 +697,7 @@ class AlbumArtistController(NodeController):
         raw = self.client.find('albumartist', self.__artist)
         albums = set()
         for song in raw:
-            if 'album' in song:
+            if 'album' in song and len(song['album']) > 0:
                 albums.add(song['album'])
         node = lambda album: TreeNode(CompilationAlbumController(self.client, self.__artist, album))
         return map(node, sorted(albums))
@@ -774,16 +774,148 @@ class GenresController(NodeController):
         f = lambda x: len(x.strip()) > 0
         raw = self.client.list('genre')
         node = lambda genre: TreeNode(
-                    GenreArtistController(self.client, genre))
+                    GenreController(self.client, genre))
+        return map(node, sorted(filter(f, raw)))
     
     @property
     def icon(self):
         """ Returns the icon. """
-        return self.icons["server-database"]
+        return self.icons['server-database']
     
     @property
     def label(self):
-        return "Genres"
+        return 'Genres'
+
+class GenreController(NodeController):
+    
+    def __init__(self, client, genre):
+        super(GenreController, self).__init__(client)
+        self.__genre = genre
+    
+    def fetch(self):
+        nodes = [TreeNode(GenreCompilationsController(self.client, self.__genre))]
+        hasArtist = lambda x: 'artist' in x and len(x['artist']) > 0
+        raw = self.client.find('genre', self.__genre)
+        node = lambda x: TreeNode(GenreArtistController(self.client, self.__genre, x))
+        artist = lambda x: x['artist']
+        nodes.extend(map(node, sorted(set(map(artist, filter(hasArtist, raw))))))
+        return nodes
+    
+    @property
+    def icon(self):
+        return self.icons['folder-sound']
+    
+    @property
+    def label(self):
+        return self.__genre
+
+class GenreCompilationsController(NodeController):
+    def __init__(self, client, genre):
+        super(GenreCompilationsController, self).__init__(client)
+        self.__genre = genre
+    
+    def fetch(self):
+        raw = self.client.find('genre', self.__genre)
+        f = lambda x: 'albumartist' in x and len(x['albumartist'].strip()) > 0
+        m = lambda x: x['albumartist']
+        node = lambda x: TreeNode(GenreCompilationArtistController(self.client, self.__genre, x))
+        return map(node, sorted(set(map(m, filter(f, raw)))))
+    
+    @property
+    def icon(self):
+        return self.icons['folder-sound']
+    
+    @property
+    def label(self):
+        return "Compilations"
+
+class GenreCompilationArtistController(NodeController):
+    def __init__(self, client, genre, artist):
+        super(GenreCompilationArtistController, self).__init__(client)
+        self.__genre = genre
+        self.__artist = artist
+    
+    def fetch(self):
+        raw = self.client.find('albumartist', self.__artist)
+        isArtist = lambda x: 'albumartist' in x and x['albumartist'] == self.__artist
+        isGenre = lambda x: 'genre' in x and x['genre'] == self.__genre
+        f = lambda x: isGenre(x) and isArtist(x)
+        node = lambda x: TreeNode(GenreCompilationAlbumController(self.client, self.__genre, self.__artist, x))
+        m = lambda x: x['album']
+        return map(node, sorted(set(map(m, filter(f, raw)))))
+    
+    @property
+    def icon(self):
+        return self.icons['folder-sound']
+    
+    @property
+    def label(self):
+        return self.__artist
+
+class GenreCompilationAlbumController(NodeController):
+    def __init__(self, client, genre, artist, album):
+        super(GenreCompilationAlbumController, self).__init__(client)
+        self.__genre = genre
+        self.__artist = artist
+        self.__album = album
+    
+    def fetch(self):
+        raw = self.client.find('album', self.__album)
+        isGenre = lambda x: 'genre' in x and x['genre'] == self.__genre
+        isArtist = lambda x: 'albumartist' in x and x['albumartist'] == self.__artist
+        f = lambda x: isGenre(x) and isArtist(x)
+        node = lambda x: TreeNode(SongController(self.client, x))
+        return map(node, sorted(map(AlbumSong, filter(f, raw))))
+    
+    @property
+    def icon(self):
+        return self.icons['media-optical-audio']
+    
+    @property
+    def label(self):
+        return self.__album
+
+class GenreArtistController(NodeController):
+    def __init__(self, client, genre, artist):
+        super(GenreArtistController, self).__init__(client)
+        self.__genre = genre
+        self.__artist = artist
+    
+    def fetch(self):
+        f = lambda x: 'genre' in x and x['genre'] == self.__genre and 'album' in x and len(x['album'].strip()) > 0
+        m = lambda x: x['album']
+        raw = self.client.find('artist', self.__artist)
+        node = lambda x: TreeNode(GenreArtistAlbumController(self.client, self.__genre, self.__artist, x))
+        return map(node, sorted(set(map(m, filter(f, raw)))))
+        
+    @property
+    def label(self):
+        return self.__artist
+    
+    @property
+    def icon(self):
+        return self.icons['folder-sound']
+
+class GenreArtistAlbumController(NodeController):
+    def __init__(self, client, genre, artist, album):
+        super(GenreArtistAlbumController, self).__init__(client)
+        self.__genre = genre
+        self.__artist = artist
+        self.__album = album
+    
+    def fetch(self):
+        raw = self.client.find('album', self.__album)
+        f = lambda x: 'genre' in x and x['genre'] == self.__genre and 'artist' in x and x['artist'] == self.__artist
+        node = lambda x: TreeNode(SongController(self.client, x))
+        return map(node, sorted(map(AlbumSong, filter(f, raw))))
+
+    @property
+    def icon(self):
+        return self.icons['media-optical-audio']
+    
+    @property
+    def label(self):
+        return self.__album
 
 class ComposersController(NodeController):
     
@@ -895,27 +1027,6 @@ class ArtistSongsController(NodeController):
     def label(self):
         """ Returns the label. """
         return "All Songs"
-
-class GenreController(NodeController):
-    """ Genres > Viking Death Metal """
-    def __init__(self, genre):
-        self.__genre = genre
-
-class GenreArtistController(NodeController):
-    """ Viking Death Metal > Amon Amarth """
-    
-    def __init__(self, client, genre):
-        super(GenreAristController, self).__init__(client)
-        self.__genre = genre
-    
-    @property
-    def icon(self):
-        return self.icons['folder-sound']
-    
-    @property
-    def label(self):
-        return self.__genre
-
 
 class SongController(NodeController):
     """ A song. Left side. """
