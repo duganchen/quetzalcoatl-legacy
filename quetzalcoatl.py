@@ -674,6 +674,12 @@ class AlbumsController(NodeController):
 
 class AlbumArtistsController(NodeController):
     
+    def fetch(self):
+        raw = self.client.list('AlbumArtist')
+        f = lambda x: len(x.strip()) > 0
+        node = lambda x: TreeNode(AlbumArtistController(self.client, x))
+        return map(node, sorted(filter(f, raw)))
+    
     @property
     def icon(self):
         return self.icons['server-database']
@@ -681,7 +687,50 @@ class AlbumArtistsController(NodeController):
     def label(self):
         return "Compilations"
 
+class AlbumArtistController(NodeController):
+    
+    def __init__(self, client, albumArtist):
+        super(AlbumArtistController, self).__init__(client)
+        self.__artist = albumArtist
+    
+    def fetch(self):
+        raw = self.client.find('albumartist', self.__artist)
+        albums = set()
+        for song in raw:
+            if 'album' in song:
+                albums.add(song['album'])
+        node = lambda album: TreeNode(CompilationAlbumController(self.client, self.__artist, album))
+        return map(node, sorted(albums))
+    
+    @property
+    def icon(self):
+        return self.icons['folder-sound']
+    @property
+    def label(self):
+        return self.__artist
+
+class CompilationAlbumController(NodeController):
+    def __init__(self, client, artist, album):
+        super(CompilationAlbumController, self).__init__(client)
+        self.__artist = artist
+        self.__album = album
+    
+    def fetch(self):
+        f = lambda x: 'albumartist' in x and x['albumartist'] == self.__artist
+        node = lambda x: TreeNode(SongController(self.client, x))
+        raw = self.client.find('album', self.__album)
+        return map(node, sorted(map(AlbumSong, filter(f, raw))))
+    
+    @property
+    def icon(self):
+        return self.icons['media-optical-audio']
+    
+    @property
+    def label(self):
+        return self.__album
+
 class SongsController(NodeController):
+
     
     @property
     def icon(self):
