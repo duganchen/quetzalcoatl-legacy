@@ -731,6 +731,11 @@ class CompilationAlbumController(NodeController):
 
 class SongsController(NodeController):
 
+    def fetch(self):
+        raw = self.client.listallinfo()
+        node = lambda x: TreeNode(SongController(self.client, x))
+        f = lambda x: 'file' in x
+        return map(node, sorted(map(RandomSong, filter(f, raw))))
     
     @property
     def icon(self):
@@ -751,7 +756,6 @@ class AlbumController(NodeController):
         raw = self.client.find('album', self.__album)
         node = lambda song: TreeNode(SongController(self.client, song))
         return map(node, sorted(map(AlbumSong, raw)))
-        
     
     @property
     def label(self):
