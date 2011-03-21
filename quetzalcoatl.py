@@ -1,6 +1,10 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
+# I'm aware of an inefficiency: expanding a node for the first time
+# and causing a fetch will cause the view's columns to be resized to the
+# contents twice.
+
 import sip
 
 sip.setapi("QDate", 2)
@@ -367,11 +371,14 @@ class TreeNode(list):
         Returns the data for the specified column and display role.
         """
         
-        if role == Qt.DisplayRole:
+        if index.column() == 0  and role == Qt.DisplayRole:
             return self.__controller.label.decode("utf-8")
         
-        if role == Qt.DecorationRole:
+        if index.column() == 0 and role == Qt.DecorationRole:
             return self.__controller.icon
+        
+        if index.column() == 1 and role == Qt.DisplayRole:
+            return self.__controller.track
         
         return None
     
@@ -422,6 +429,9 @@ class TreeModel(QtCore.QAbstractItemModel):
     The main model class used by Quetzalcoatl.    
     """
     
+    # Data changed. View resized columns to contents.
+    changed = pyqtSignal(QModelIndex)
+    
     # http://benjamin-meyer.blogspot.com/2006/10/dynamic-models.html
     
     def __init__(self, controller, parent=None):
@@ -442,7 +452,7 @@ class TreeModel(QtCore.QAbstractItemModel):
     
     def columnCount(self, parent):
         """ Returns the number of columns. """
-        return 1
+        return 2
 
     def hasChildren(self, parent=QModelIndex()):
         
@@ -486,6 +496,7 @@ class TreeModel(QtCore.QAbstractItemModel):
         
         node.isFetched = True
         self.endInsertRows()
+        self.changed.emit(parent)
 
     def data(self, index, role=Qt.DisplayRole):
         
@@ -495,6 +506,14 @@ class TreeModel(QtCore.QAbstractItemModel):
             return None
         node = self.node(index)
         return node.data(index, role)
+    
+    def headerData(self, section, orientation, role = Qt.DisplayRole):
+        if role == Qt.DisplayRole and orientation == Qt.Horizontal:
+            if section == 0:
+                return "Name"
+            if section == 1:
+                return "Track"
+        return None
 
     def flags(self, index):
         
@@ -538,8 +557,16 @@ class TreeModel(QtCore.QAbstractItemModel):
         
         node = self.node(parent)
         return self.createIndex(row, column, node[row])
-        
-        
+
+class TreeView(QTreeView):
+    def __init__(self, parent = None):
+        super(TreeView, self).__init__(parent)
+        self.expanded.connect(self.resizeColumnsToContents)
+        self.collapsed.connect(self.resizeColumnsToContents)
+    
+    def resizeColumnsToContents(self, QModelIndex):
+        self.resizeColumnToContents(0)
+        self.resizeColumnToContents(1)
 
 
 class NodeController(object):
@@ -717,7 +744,7 @@ class CompilationAlbumController(NodeController):
     
     def fetch(self):
         f = lambda x: 'albumartist' in x and x['albumartist'] == self.__artist
-        node = lambda x: TreeNode(SongController(self.client, x))
+        node = lambda x: TreeNode(AlbumSongController(self.client, x))
         raw = self.client.find('album', self.__album)
         return map(node, sorted(map(AlbumSong, filter(f, raw))))
     
@@ -754,7 +781,7 @@ class AlbumController(NodeController):
     def fetch(self):
         """ Fetches and returns the album's songs """
         raw = self.client.find('album', self.__album)
-        node = lambda song: TreeNode(SongController(self.client, song))
+        node = lambda song: TreeNode(AlbumSongController(self.client, song))
         return map(node, sorted(map(AlbumSong, raw)))
     
     @property
@@ -864,7 +891,7 @@ class GenreCompilationAlbumController(NodeController):
         isGenre = lambda x: 'genre' in x and x['genre'] == self.__genre
         isArtist = lambda x: 'albumartist' in x and x['albumartist'] == self.__artist
         f = lambda x: isGenre(x) and isArtist(x)
-        node = lambda x: TreeNode(SongController(self.client, x))
+        node = lambda x: TreeNode(AlbumSongController(self.client, x))
         return map(node, sorted(map(AlbumSong, filter(f, raw))))
     
     @property
@@ -906,7 +933,7 @@ class GenreArtistAlbumController(NodeController):
     def fetch(self):
         raw = self.client.find('album', self.__album)
         f = lambda x: 'genre' in x and x['genre'] == self.__genre and 'artist' in x and x['artist'] == self.__artist
-        node = lambda x: TreeNode(SongController(self.client, x))
+        node = lambda x: TreeNode(AlbumSongController(self.client, x))
         return map(node, sorted(map(AlbumSong, filter(f, raw))))
 
     @property
@@ -992,7 +1019,7 @@ class ArtistAlbumController(NodeController):
         """ Fetches the songs. """
         f = lambda x: 'artist' in x and x['artist'] == self.__artist
         raw = self.client.find("album", self.__album)
-        song = lambda song: TreeNode(SongController(self.client, song))
+        song = lambda song: TreeNode(AlbumSongController(self.client, song))
         return map(song, sorted(map(AlbumSong, filter(f, raw))))
         
     @property
@@ -1055,6 +1082,15 @@ class SongController(NodeController):
     def song(self):
         """ Returns the song. """
         return self.__song
+
+class AlbumSongController(SongController):
+    """ Tracks are only displayed in the context of albums. """
+    
+    @property
+    def track(self):
+        if 'track' in self.song:
+            return self.song['track']
+        return None
 
 class Client0(QObject):
     """
@@ -3513,9 +3549,10 @@ class UI(kdeui.KMainWindow):
         client0.open("localhost", 6600)
         
         treeModel = TreeModel(RootController(client0))
-        treeView = QTreeView()
+        treeView = TreeView()
         treeView.setIconSize(QSize(34, 34))
         treeView.setModel(treeModel)
+        treeModel.changed.connect(treeView.resizeColumnsToContents)
         self.tabs.addTab(treeView, "New")
 
         self.playlistModel = PlaylistModel(combinedTime, self)
