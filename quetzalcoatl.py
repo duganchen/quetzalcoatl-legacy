@@ -932,7 +932,9 @@ class GenreArtistController(NodeController):
         m = lambda x: x['album']
         raw = self.client.find('artist', self.__artist)
         node = lambda x: TreeNode(GenreArtistAlbumController(self.client, self.__genre, self.__artist, x))
-        return map(node, sorted(set(map(m, filter(f, raw)))))
+        nodes = [TreeNode(GenreArtistSongsController(self.client, self.__genre, self.__artist))]
+        nodes.extend(map(node, sorted(set(map(m, filter(f, raw))))))
+        return nodes
         
     @property
     def label(self):
@@ -941,6 +943,26 @@ class GenreArtistController(NodeController):
     @property
     def icon(self):
         return self.icons['folder-sound']
+
+class GenreArtistSongsController(NodeController):
+    def __init__(self, client, genre, artist):
+        super(GenreArtistSongsController, self).__init__(client)
+        self.__genre = genre
+        self.__artist = artist
+    
+    def fetch(self):
+        raw = self.client.find('artist', self.__artist)
+        f = lambda x: 'genre' in x and x['genre'] == self.__genre
+        node = lambda x: TreeNode(SongController(self.client, x))
+        return map(node, map(RandomSong, filter(f, raw)))
+    
+    @property
+    def icon(self):
+        return self.icons['folder-sound']
+    
+    @property
+    def label(self):
+        return "All Songs"
 
 class GenreArtistAlbumController(NodeController):
     def __init__(self, client, genre, artist, album):
@@ -966,6 +988,12 @@ class GenreArtistAlbumController(NodeController):
 class ComposersController(NodeController):
     
     """ Controller for the Composers node. """
+    
+    def fetch(self):
+        raw = self.client.list('composer')
+        f = lambda x: len(x.strip()) > 0
+        node = lambda x: TreeNode(ComposerController(self.client, x))
+        return map(node, sorted(filter(f, raw)))
     
     @property
     def icon(self):
@@ -1110,6 +1138,66 @@ class AlbumSongController(SongController):
         if 'track' in self.song:
             return self.song['track']
         return None
+
+class ComposerController(NodeController):
+    def __init__(self, client, composer):
+        super(ComposerController, self).__init__(client)
+        self.__composer = composer
+    
+    def fetch(self):
+        raw = self.client.find('composer', self.__composer)
+        f = lambda x: 'album' in x and len(x['album'].strip()) > 0
+        node = lambda x: TreeNode(ComposerAlbumController(self.client, self.__composer, x))
+        m = lambda x: x['album']
+        nodes = [TreeNode(ComposerSongsController(self.client, self.__composer))]
+        nodes.extend(map(node, sorted(set(map(m, filter(f, raw))))))
+        return nodes
+    
+    @property
+    def icon(self):
+        return self.icons['folder-sound']
+    
+    @property
+    def label(self):
+        return self.__composer
+
+class ComposerSongsController(NodeController):
+    def __init__(self, client, composer):
+        super(ComposerSongsController, self).__init__(client)
+        self.__composer = composer
+    
+    def fetch(self):
+        raw = self.client.find('composer', self.__composer)
+        node = lambda x: TreeNode(SongController(self.client, x))
+        return map(node, sorted(map(AlbumSong, raw)))
+    
+    @property
+    def icon(self):
+        return self.icons['folder-sound']
+    
+    @property
+    def label(self):
+        return 'All Songs'
+
+class ComposerAlbumController(NodeController):
+    def __init__(self, client, composer, album):
+        super(ComposerAlbumController, self).__init__(client)
+        self.__composer = composer
+        self.__album = album
+    
+    def fetch(self):
+        raw = self.client.find('album', self.__album)
+        f = lambda x: 'composer' in x and x['composer'] == self.__composer
+        node = lambda x: TreeNode(AlbumSongController(self.client, x))
+        return map(node, sorted(map(AlbumSong, filter(f, raw))))
+    
+    @property
+    def icon(self):
+        return self.icons['media-optical-audio']
+    
+    @property
+    def label(self):
+        return self.__album
 
 class Client0(QObject):
     """
