@@ -820,7 +820,8 @@ class GenreController(NodeController):
         self.__genre = genre
     
     def fetch(self):
-        nodes = [TreeNode(GenreCompilationsController(self.client, self.__genre))]
+        nodes = [TreeNode(GenreSongsController(self.client, self.__genre))]
+        nodes.append(TreeNode(GenreCompilationsController(self.client, self.__genre)))
         hasArtist = lambda x: 'artist' in x and len(x['artist']) > 0
         raw = self.client.find('genre', self.__genre)
         node = lambda x: TreeNode(GenreArtistController(self.client, self.__genre, x))
@@ -835,6 +836,24 @@ class GenreController(NodeController):
     @property
     def label(self):
         return self.__genre
+
+class GenreSongsController(NodeController):
+    def __init__(self, client, genre):
+        super(GenreSongsController, self).__init__(client)
+        self.__genre = genre
+    
+    def fetch(self):
+        raw = self.client.find('genre', self.__genre)
+        node = lambda x: TreeNode(SongController(self.client, x))
+        return map(node, sorted(map(RandomSong, raw)))
+    
+    @property
+    def icon(self):
+        return self.icons['folder-sound']
+    
+    @property
+    def label(self):
+        return "All Songs"
 
 class GenreCompilationsController(NodeController):
     def __init__(self, client, genre):
