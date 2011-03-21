@@ -27,6 +27,7 @@ from PyQt4.QtGui import QIcon, QTreeView
 from PyKDE4.kdeui import KIcon
 import socket
 from sys import maxint
+import posixpath
 
 
 # The root menu of my iPod video 5.5G is:
@@ -199,7 +200,7 @@ class SanitizedClient(object):
         self.__sanitizers = {}
         self.__sanitizers['songid'] = int
         self.__sanitizers['playlistlength'] = int
-        self.__sanitizers['playlist'] = int
+        self.__sanitizers['playlist'] = self.__sanitize_playlist
         self.__sanitizers['song'] = int
         self.__sanitizers['songs'] = int
         self.__sanitizers['xfade'] = int
@@ -258,6 +259,17 @@ class SanitizedClient(object):
             tokens = value.split(':')
             return tuple([TimeSpan(int(x)) for x in tokens])
         return TimeSpan(value)
+    
+    @classmethod
+    def __sanitize_playlist(cls, value):
+        """
+        lsinfo() and status() can both return a playlist key.
+        """
+        try:
+            posixpath.splitext(value)
+            return value
+        except:
+            return int(value)
 
     @classmethod
     def __sanitize_tag(cls, value):
@@ -618,6 +630,10 @@ class NodeController(object):
         """ Returns the song (None for directories). """
         return None
     
+    @song.setter
+    def song(self):
+        return None
+    
     @property
     def track(self):
         """ Returns the track. Or None. """
@@ -639,7 +655,7 @@ class RootController(NodeController):
         nodes.append(TreeNode(SongsController(self.client)))
         nodes.append(TreeNode(GenresController(self.client)))
         nodes.append(TreeNode(ComposersController(self.client)))
-        nodes.append(TreeNode(FoldersController(self.client)))
+        nodes.append(TreeNode(DirectoryController(self.client)))
         return nodes
 
 
@@ -1004,22 +1020,6 @@ class ComposersController(NodeController):
     def label(self):
         return "Composers"
 
-class FoldersController(NodeController):
-    
-    """
-    Controller for the physical file paths
-    navigation node.
-    """
-    
-    @property
-    def icon(self):
-        """ Returns the icon. """
-        return self.icons["drive-harddisk"]
-    
-    @property
-    def label(self):
-        return "Directories"
-
 class ArtistController(NodeController):
     
     """ A controller for a node for an artist. """
@@ -1199,6 +1199,53 @@ class ComposerAlbumController(NodeController):
     def label(self):
         return self.__album
 
+class DirectoryController(NodeController):
+    def __init__(self, client, info = None):
+        
+        super(DirectoryController, self).__init__(client)
+        self.__info = info
+        self.__song = None
+        if info is not None and not 'directory' in info:
+            self.__song = RandomSong(info)
+    
+    def fetch(self):
+        if self.__info is None:
+            raw = self.client.lsinfo()
+        else:
+            raw = self.client.lsinfo(self.__info['directory'])
+        
+        node = lambda x: TreeNode(DirectoryController(self.client, x))
+        f = lambda x: 'playlist' not in x
+        return map(node, filter(f, raw))
+    
+    @property
+    def label(self):
+        if self.__info is None:
+            return 'Directories'
+        if 'directory' in self.__info:
+            return posixpath.basename(self.__info['directory'])
+        return self.song.title
+    
+    @property
+    def icon(self):
+        
+        if self.__info is None:
+            return self.icons['drive-harddisk']
+        
+        if self.song is None:
+            return self.icons['folder-sound']
+        
+        extension = os.path.splitext(self.song['file'])[1].lower()
+        
+        try:
+            return self.icons[extension]
+        except:
+            return self.icons["audio-x-generic"]
+        
+    @property
+    def song(self):
+        return self.__song
+
 class Client0(QObject):
     """
     The client wrapper class.
@@ -1246,14 +1293,7 @@ class Client0(QObject):
         """
         Executes a poller method, and handles exceptions.
         """
-        value = None
-        
-        try:
-            value = method(*args)
-        except Exception as e:
-            self.close()
-            self.error.emit(str(e))
-        return value
+        return method(*args)
     
     def open(self, host, port):
         """
