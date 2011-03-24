@@ -1704,7 +1704,6 @@ class Connector(QtCore.QObject):
         self.timer.stop()
         for connectable in self.connectables:
             connectable.clientDisconnect()
-        self.playlistModel.clientDisconnect()
         try:
             Client.cmd("disconnect")
         except:
@@ -2442,213 +2441,6 @@ class OneUri(object):
 
     def fetchUris(self, node):
         return (node.myUri(), [node.myUri()])
-
-
-#http://benjamin-meyer.blogspot.com/2006/10/dynamic-models.html
-
-class DatabaseModel(QtCore.QAbstractItemModel):
-
-    def __init__(self, root, uriFetcher, parent=None):
-        super(DatabaseModel, self).__init__(parent)
-        self.root = root
-        self.uriFetcher = uriFetcher
-
-        # We do not fetch yet.
-        self.root.setFetched(True)
-
-    def setConnector(self, connector):
-        self.connector = connector
-
-    def node(self, index):
-        if index.isValid():
-            return index.internalPointer()
-        return self.root
-
-    def rowCount(self, parent):
-        return self.node(parent).childCount()
-
-    def columnCount(self, parent):
-        return 1
-
-    def hasChildren(self, parent):
-        node = self.node(parent)
-        if not parent.isValid():
-            return node.childCount() > 0
-        return not node.isLeaf()
-
-    def canFetchMore(self, parent):
-        return not self.node(parent).isFetched()
-
-    def fetchMore(self, parent):
-        try:
-            node = self.node(parent)
-            node.setFetched(True)
-            node.preFetch()
-            self.beginInsertRows(parent, 0, node.insertCount() - 1)
-            node.postFetch()
-            self.endInsertRows()
-        except (MPDError, socket.error) as e:
-            self.emit(QtCore.SIGNAL("broken"), str(e))
-            self.connector.setBroken(e)
-
-    def parent(self, index):
-        if not index.isValid():
-            return QtCore.QModelIndex()
-        node = self.node(index)
-        if node.parent() is None:
-            return QtCore.QModelIndex()
-        if node.parent() == self.root:
-            return QtCore.QModelIndex()
-        if not node.parent().parent():
-            return QtCore.QModelIndex()
-        return self.createIndex(node.parent().row(), 0, node.parent())
-
-    def row(self, row, column, parent):
-        if not self.hasIndex(row, column, parent):
-            return QtCore.QModelIndex()
-        parentNode = self.node(parent)
-        return self.createIndex(row, column, parentNode[row])
-
-    def flags(self, index):
-        flags = QtCore.Qt.ItemIsEnabled
-        if self.node(row).isLeaf():
-            flags = flags | QtCore.Qt.ItemIsSelectable
-            flags = flags | QtCore.Qt.ItemIsDragEnabled
-        return flags
-
-    def clientConnect(self):
-        self.root.clientConnect()
-        self.root.setLeaf(False)
-        self.reset()
-
-    def clientDisconnect(self):
-        self.beginRemoveRows(QtCore.QModelIndex(), 0, \
-        self.root.childCount() - 1)
-        self.root.clientDisconnect()
-        self.endRemoveRows()
-        self.root.setLeaf(True)
-
-    def data(self, index, role):
-        if not index.isValid():
-            return QtCore.QVariant()
-
-        if role == QtCore.Qt.DisplayRole:
-            return self.node(row).data()
-
-        if self.node(row).isLeaf():
-            if role == QtCore.Qt.DecorationRole:
-                icon = kdeui.KIcon("audio-x-generic")
-                pixmap = icon.pixmap(QSize(32, 32))
-                scaled = pixmap.scaled(QSize(34, 34), Qt.IgnoreAspectRatio, Qt.FastTransformation)
-                return QtCore.QVariant(scaled)
-        else:
-            if role == QtCore.Qt.FontRole:
-                font = QtGui.QFont()
-                font.setBold(True)
-                return QtCore.QVariant(font)
-            if role == QtCore.Qt.DecorationRole:
-                icon = kdeui.KIcon("folder-sound")
-                pixmap = icon.pixmap(QSize(32, 32))
-                scaled = pixmap.scaled(QSize(34, 34), Qt.IgnoreAspectRatio, Qt.FastTransformation)
-                
-                return QtCore.QVariant(scaled)
-
-
-        return QtCore.QVariant()
-
-    # Respond to doubleclick
-    def sendUris(self, index):
-        node = self.node(index)
-        if node.isLeaf():
-            uriToPlay, uris = self.uriFetcher.fetchUris(self.node(index))
-            self.emit(QtCore.SIGNAL("uris"), uriToPlay, uris)
-
-    def mimeData(self, indexes):
-        encodedData = QtCore.QByteArray()
-        stream = QtCore.QDataStream(encodedData, QtCore.QIODevice.WriteOnly)
-        for index in indexes:
-            if index.isValid():
-                stream.writeString(self.node(row).myUri())
-
-        mimeData = QtCore.QMimeData()
-        mimeData.setData("application/x-quetzalcoatl-uris", encodedData)
-        return mimeData
-
-
-class PlaylistsModel(DatabaseModel):
-
-    def __init__(self, uriFetcher, parent=None):
-
-        # It doesn't matter which fetcher we choose, because we never use
-        # it.
-        super(PlaylistsModel, self).__init__(FetchingNode(AllSongsFetcher()), \
-        uriFetcher, parent)
-
-    def clientConnect(self):
-        # We do NOT fetch on connection. Instead, we do that when updating.
-        pass
-
-    def setConnector(self, connector):
-        self.connector = connector
-
-    def setPlaylists(self, playlists):
-        oldSize = self.root.childCount()
-        newSize = len(playlists)
-
-        # First we trim to size
-        if newSize < oldSize:
-            self.beginRemoveRows(QtCore.QModelIndex(), newSize, \
-            oldSize - 1)
-            del self.root.children[newSize:oldSize]
-            self.endRemoveRows()
-
-        # Then we add what we need to
-        if oldSize < newSize:
-            self.beginInsertRows(QtCore.QModelIndex(), oldSize, newSize - 1)
-            for i in xrange(oldSize, newSize):
-                self.root.children.append(PlaylistNode(playlists[i], \
-                self.root))
-            self.endInsertRows()
-
-        # Then we check what's changed.
-        for i in xrange(newSize):
-            namesMatch = self.root[i].playlist() == playlists[i]["playlist"]
-            datesMatch = self.root[i].modified() == \
-            playlists[i]["last-modified"]
-
-            index = None
-            if not namesMatch or not datesMatch:
-                index = self.createIndex(i, 0, self.root[i])
-            if not namesMatch:
-                self.root[i].setPlaylist(playlists[i]["playlist"])
-                self.root[i].setModified(playlists[i]["last-modified"])
-                self.root[i].fetcher.playlist = playlists[i]["playlist"]
-                self.emit(QtCore.SIGNAL(\
-                "dataChanged(QModelIndex, QModelIndex"), index, index)
-            if index:
-                self.root[i].setFetched(False)
-                self.emit(QtCore.SIGNAL("isExpanded"), index, False)
-
-    def flags(self, index):
-        flags = super(PlaylistsModel, self).flags(index)
-        if index.isValid() and not self.node(row).isLeaf():
-            flags = flags | QtCore.Qt.ItemIsEditable
-        return flags
-
-    def rename(self, index, name):
-        try:
-            Client.cmd("rename", self.root[index.row()].playlist(), name)
-            #self.connector.updatePlaylists()
-        except (MPDError, socket.error) as e:
-            self.connector.setBroken(e)
-
-    def delete(self, index):
-        try:
-            Client.cmd("rm", self.root[index.row()].playlist())
-            #self.connector.updatePlaylists()
-        except (MPDError, socket.error) as e:
-            self.connector.setBroken(e)
-
 
 class DatabaseView(QtGui.QTreeView):
 
@@ -3647,15 +3439,11 @@ class UI(kdeui.KMainWindow):
 
         self.dbModels = []
 
-        self.playlistsModel = PlaylistsModel(AllUris())
-        self.connector.addPlaylistModel(self.playlistsModel)
         view = PlaylistsView()
         self.connector.addConnectable(view)
-        view.setModel(self.playlistsModel)
         self.playlistsDelegate = PlaylistsDelegate(self)
         view.setItemDelegate(self.playlistsDelegate)
         self.tabs.addTab(view, "Playlists")
-        self.dbModels.append(self.playlistsModel)
 
         self.addTab(ArtistsFetcher(), AllUris(), "Artists")
         self.addTab(AlbumsFetcher(), AllUris(), "Albums")
@@ -3772,20 +3560,14 @@ class UI(kdeui.KMainWindow):
         self.playlistModel.setUris(row, uris)
 
     def addTab(self, fetcher, uriFetcher, label):
-        model = DatabaseModel(FetchingNode(fetcher), uriFetcher)
-        self.connector.addConnectable(model)
         view = DatabaseView()
         self.connector.addConnectable(view)
-        view.setModel(model)
         self.tabs.addTab(view, label)
-        self.dbModels.append(model)
 
     def connectDBModels(self):
         for model in self.dbModels:
             self.connect(model, QtCore.SIGNAL("uris"), \
             self.playlistModel.setUris)
-        self.connect(self.playlistsModel, QtCore.SIGNAL("uris"), \
-        self.playlistModel.setUris)
 
     def setDragging(self, value):
         self.isDragging = True
