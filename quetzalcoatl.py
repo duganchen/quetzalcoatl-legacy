@@ -3558,38 +3558,6 @@ class UI(kdeui.KMainWindow):
 
     def __init__(self, client):
         QtGui.QMainWindow.__init__(self)
-        self.setWindowIcon(kdeui.KIcon("multimedia-player"))
-
-        self.isDragging = False
-
-        self.resize(800, 600)
-        self.setWindowTitle('Quetzalcoatl')
-
-        self.status = self.statusBar()
-        combinedTime = QtGui.QLabel()
-        self.status.addPermanentWidget(combinedTime)
-
-        self.connector = Connector(self)
-        self.connector.addConnectable(self, Connector.UPDATEABLE)
-
-        self.cfgDlg = Configurer(self)
-
-        toolBar = self.toolBar("ToolBar")
-        toolBar.setToolBarsEditable(False)
-        toolBar.setToolBarsLocked(True)
-        toolBar.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
-
-        toolBar.addAction(kdeui.KIcon("configure"), "Configure", \
-        self.cfgDlg.exec_)
-
-        connectAction = ConnectAction(self)
-
-
-
-class UI(kdeui.KMainWindow):
-
-    def __init__(self, client):
-        QtGui.QMainWindow.__init__(self)
         self.__c = Client0(self)
         self.__c.open("localhost", 6600) 
         
