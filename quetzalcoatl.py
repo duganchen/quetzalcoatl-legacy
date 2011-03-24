@@ -1213,10 +1213,13 @@ class DirectoryController(NodeController):
             raw = self.client.lsinfo()
         else:
             raw = self.client.lsinfo(self.__info['directory'])
-        
+        dirs = filter(lambda x: 'directory' in x, raw)
+        dirs.sort(key=lambda x: x['directory'].lower())
+        songs = filter(lambda x: 'file' in x, raw)
+        songs = map(lambda x: RandomSong(x), songs)
+        dirs.extend(songs)
         node = lambda x: TreeNode(DirectoryController(self.client, x))
-        f = lambda x: 'playlist' not in x
-        return map(node, filter(f, raw))
+        return map(node, dirs)
     
     @property
     def label(self):
