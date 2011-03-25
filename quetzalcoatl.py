@@ -99,7 +99,27 @@ class RandomSong(Song):
     def __ge__(self, other):
         return self.title.lower() >= other.title.lower()
 
-### Two classes to use to refactor.
+class PlaylistSong(Song):
+    
+    """ A song in the playlist. """
+    
+    def __lt__(self, other):
+        return self['pos'] < other['pos']
+    
+    def __le__(self, other):
+        return self['pos'] <= other['pos']
+    
+    def __eq__(self, other):
+        return self['pos'] == other['pos']
+    
+    def __ne__(self, other):
+        return self['pos'] != other['pos']
+    
+    def __gt__(self, other):
+        return self['pos'] > other['pos']
+    
+    def __ge__(self, other):
+        return self.title['pos'] >= other['pos']
 
 class TimeSpan(object):
     """
@@ -428,6 +448,7 @@ class TreeNode(list):
         """ Starts playing at this node. """
         self.__controller.play(self)
 
+
 class TreeModel(QtCore.QAbstractItemModel):
 
     """
@@ -511,14 +532,6 @@ class TreeModel(QtCore.QAbstractItemModel):
             return None
         node = self.node(index)
         return node.data(index, role)
-    
-    def headerData(self, section, orientation, role = Qt.DisplayRole):
-        if role == Qt.DisplayRole and orientation == Qt.Horizontal:
-            if section == 0:
-                return "Name"
-            if section == 1:
-                return "Track"
-        return None
 
     def flags(self, index):
         
@@ -568,6 +581,24 @@ class TreeModel(QtCore.QAbstractItemModel):
         node = index.internalPointer()
         if node.song:
             node.play()
+
+class DBModel(TreeModel):
+    def headerData(self, section, orientation, role = Qt.DisplayRole):
+        if role == Qt.DisplayRole and orientation == Qt.Horizontal:
+            if section == 0:
+                return "Name"
+            if section == 1:
+                return "Track"
+        return None
+
+class PLModel(TreeModel):
+    def headerData(self, section, orientation, role = Qt.DisplayRole):
+        if role == Qt.DisplayRole and orientation == Qt.Horizontal:
+            if section == 0:
+                return "Name"
+            if section == 1:
+                return "Time"
+        return None
 
 class TreeView(QTreeView):
     def __init__(self, parent = None):
@@ -1272,9 +1303,8 @@ class Client0(QObject):
     """
     The client wrapper class.
     """
-    
-    playlistlength = pyqtSignal(int)
-    playlist = pyqtSignal(int)
+
+    playlist = pyqtSignal(list, int)
     repeat = pyqtSignal(bool)
     consume = pyqtSignal(bool)
     random = pyqtSignal(bool)
@@ -1338,14 +1368,12 @@ class Client0(QObject):
     def poll(self):
         """ Polls the server. """
         status = self.__poller.status()
-        
-        if self.__updated(status, 'playlistlength'):
-            self.__status['playlistlength'] = status['playlistlength']
-            self.playlistlength.emit(status['playlistlength'])
 
         if self.__updated(status, 'playlist'):
             self.__status['playlist'] = status['playlist']
-            self.playlist.emit(status['playlistlength'])
+            playlist = map(lambda x: PlaylistSong(x), self.playlistinfo())
+            playlist.sort()
+            self.playlist.emit(playlist, status['playlistlength'])
         
         if self.__updated(status, 'repeat'):
             self.__status['repeat'] = status['repeat']
@@ -1878,564 +1906,6 @@ class Configurer(kdeui.KDialog):
         self.password.setEnabled(False)
 
 
-class DatabaseView(QtGui.QTreeView):
-
-    def __init__(self, parent=None):
-        super(DatabaseView, self).__init__(parent)
-
-        self.setHeaderHidden(True)
-        self.setUniformRowHeights(True)
-        self.setDragEnabled(True)
-        self.setSelectionMode(self.ExtendedSelection)
-        self.setEnabled(False)
-
-    def setConnector(self, connector):
-        pass
-
-    def clientConnect(self):
-        self.setEnabled(True)
-
-    def clientDisconnect(self):
-        self.setEnabled(False)
-
-    def setModel(self, model):
-        self.connect(self, QtCore.SIGNAL("doubleClicked(QModelIndex)"), \
-        model.sendUris)
-
-        # Used only in the Playlists Model.
-        self.connect(model, QtCore.SIGNAL("isExpanded"), self.setExpanded)
-        QtGui.QTreeView.setModel(self, model)
-
-    def viewportEvent(self, event):
-        if event.type() == QtCore.QEvent.ToolTip:
-            index = self.indexAt(event.pos())
-            if index.isValid():
-                node = index.internalPointer()
-                if node.isLeaf():
-
-                    tags = [("artist", "Artists: "), ("album", "Album: "), \
-                    ("genre", "Genre: "), ("composer", "Composer: ")]
-
-                    text = ""
-                    first = True
-                    for tag, header in tags:
-                        if node.hasKey(tag):
-                            if first:
-                                first = False
-                            else:
-                                text = text + "\n"
-                            text = text + header + node.value(tag)
-                    if len(text) > 0:
-                        QtGui.QToolTip.showText(event.globalPos(), text)
-        return QtGui.QAbstractItemView.viewportEvent(self, event)
-
-
-class PlaylistsView(DatabaseView):
-
-    def __init__(self, parent=None):
-        super(PlaylistsView, self).__init__(parent)
-        self.actions = []
-        delete = QtGui.QAction("Delete", self)
-        self.actions.append(delete)
-        self.connect(delete, QtCore.SIGNAL("triggered()"), self.deleteSlot)
-        rename = QtGui.QAction("Rename", self)
-        self.connect(rename, QtCore.SIGNAL("triggered()"), self.renameSlot)
-        self.actions.append(rename)
-        self.row = None
-        self.setEditTriggers(QtGui.QAbstractItemView.SelectedClicked)
-
-    def renameSlot(self):
-        self.edit(self.row)
-
-    def deleteSlot(self):
-        self.model().delete(self.row)
-
-    def contextMenuEvent(self, event):
-        self.row = self.indexAt(event.pos())
-        if not self.row.isValid():
-            self.row = None
-            return
-        node = self.row.internalPointer()
-        if not node.isLeaf():
-            QtGui.QMenu.exec_(self.actions, event.globalPos())
-
-
-class PlaylistsDelegate(QtGui.QStyledItemDelegate):
-
-    def __init__(self, parent=None):
-        super(PlaylistsDelegate, self).__init__(parent)
-
-    def createEditor(self, parent, option, index):
-        return PlaylistSaver.createLineEdit(parent, True)
-
-    def setEditorData(self, editor, index):
-        editor.setText(row.internalPointer().nodeData["playlist"])
-
-    def setModelData(self, editor, model, index):
-        name = unicode(editor.text()).strip()
-        if model.root[index.row()].playlist() == name:
-            return
-        if PlaylistSaver.isOkay(name, self.parent()):
-            model.rename(index, name)
-
-
-class PlaylistModel(QtCore.QAbstractItemModel):
-
-    NO_VERSION = -32768
-    NO_SONGID = -32768
-
-    def __init__(self, combinedTimeLabel, parent=None):
-        super(PlaylistModel, self).__init__(parent)
-        self.ids = []
-        self.version = PlaylistModel.NO_VERSION
-        self.songid = PlaylistModel.NO_SONGID
-        self.selectedLength = combinedTimeLabel
-
-    def rowCount(self, parent=QtCore.QModelIndex()):
-        return len(self.ids)
-
-    def columnCount(self, parent=QtCore.QModelIndex()):
-        return 2
-
-    def setConnector(self, connector):
-        self.connector = connector
-
-    def clientConnect(self):
-        pass
-
-    def clientDisconnect(self):
-        self.version = PlaylistModel.NO_VERSION
-        self.songid = PlaylistModel.NO_SONGID
-        size = len(self.ids)
-        if size > 0:
-            self.beginRemoveRows(QtCore.QModelIndex(), 0, size - 1)
-            del self.ids[:]
-            self.endRemoveRows()
-
-    def data(self, index, role=QtCore.Qt.DisplayRole):
-        try:
-            if not index.isValid():
-                return QtCore.QVariant()
-
-            if role == QtCore.Qt.DisplayRole:
-                song = Client.cmd("playlistid", self.ids[index.row()])[0]
-                if index.column() == 0:
-                    return QtCore.QVariant(Parser.title(song).decode("utf-8"))
-                if index.column() == 1:
-                    return QtCore.QVariant(Parser.length(song))
-
-            if role == QtCore.Qt.DecorationRole:
-                if index.column() == 0:
-                    icon = kdeui.KIcon("audio-x-generic")
-                    pixmap = icon.pixmap(QSize(32, 32))
-                    scaled = pixmap.scaled(QSize(34, 34), Qt.IgnoreAspectRatio, Qt.FastTransformation)
-                    return QtCore.QVariant(scaled)
-
-            if role == QtCore.Qt.FontRole:
-                if self.ids[index.row()] == self.songid:
-                    font = QtGui.QFont()
-                    font.setBold(True)
-                    return QtCore.QVariant(font)
-            
-            return QtCore.QVariant()
-        except (MPDError, socket.error) as e:
-            return QtCore.QVariant()
-
-    def flags(self, index):
-        f = QtCore.Qt.NoItemFlags
-        if index.isValid():
-            f = f | QtCore.Qt.ItemIsEnabled
-            if index.column() == 0:
-                f = f | QtCore.Qt.ItemIsSelectable | \
-                QtCore.Qt.ItemIsDragEnabled
-        else:
-            f = f | QtCore.Qt.ItemIsDropEnabled
-        return f
-
-    def mimeData(self, indexes):
-        encodedData = QtCore.QByteArray()
-        stream = QtCore.QDataStream(encodedData, QtCore.QIODevice.WriteOnly)
-        for index in indexes:
-            if index.isValid():
-                stream.writeUInt16(index.row())
-
-        mimeData = QtCore.QMimeData()
-        mimeData.setData("application/x-quetzalcoatl-rows", encodedData)
-        return mimeData
-
-    def mimeTypes(self):
-        types = QtCore.QStringList()
-        types << "application/x-quetzalcoatl-rows"
-        types << "application/x-quetzalcoatl-uris"
-        return types
-
-    def dropMimeData(self, data, action, row, column, parent):
-        try:
-
-            if len(self.ids) > 0 and row < 0:
-                return False
-
-            if data.hasFormat("application/x-quetzalcoatl-rows"):
-                encodedData = data.data("application/x-quetzalcoatl-rows")
-                stream = QtCore.QDataStream(encodedData, \
-                QtCore.QIODevice.ReadOnly)
-                srcIndexes = []
-                while not stream.atEnd():
-                    srcIndexes.append(stream.readUInt16())
-                srcIndexes.sort()
-
-                # You don't want to know how long this took.
-                srcOffset = 0
-                destOffset = 0
-                for srcIndex in srcIndexes:
-                    if srcIndex < row:
-                        self.move(srcIndex - srcOffset, row - 1)
-                        srcOffset = srcOffset + 1
-                    else:
-                        self.move(srcIndex, row + destOffset)
-                        destOffset = destOffset + 1
-
-            if data.hasFormat("application/x-quetzalcoatl-uris"):
-                encodedData = data.data("application/x-quetzalcoatl-uris")
-                stream = QtCore.QDataStream(encodedData, \
-                QtCore.QIODevice.ReadOnly)
-
-                # If the model is empty, -1 is passed into row: >.<
-                if row == -1:
-                    insertAt = 0
-                else:
-                    insertAt = row
-                while not stream.atEnd():
-                    uri = stream.readString()
-                    self.beginInsertRows(QtCore.QModelIndex(), insertAt, \
-                    insertAt)
-                    id = Client.cmd("addid", uri, insertAt)
-                    self.ids.insert(insertAt, id)
-                    self.endInsertRows()
-                    insertAt = insertAt + 1
-                self.emit(QtCore.SIGNAL("saveable"), True)
-        except (MPDError, socket.error) as e:
-            self.connector.setBroken(e)
-
-        return True
-
-    def row(self, row, column, parent):
-
-        # This is lifted from Esperenza's PlaylistModel class.
-        if not parent.isValid():
-            if row >= len(self.ids):
-                return QtCore.QModelIndex()
-            if row < 0:
-                return QtCore.QModelIndex()
-            return self.createIndex(row, column, -1)
-        return QtCore.QModelIndex()
-
-    def move(self, srcIndex, destIndex):
-        # Exceptions are caught in the calling method.
-
-        if srcIndex == destIndex:
-            return
-
-        id = self.ids[srcIndex]
-        Client.cmd("moveid", id, destIndex)
-        if srcIndex < destIndex:
-            step = 1
-            firstIndex = srcIndex
-            lastIndex = destIndex
-        else:
-            step = -1
-            firstIndex = destIndex
-            lastIndex = srcIndex
-        for i in xrange(srcIndex, destIndex, step):
-            self.ids[i] = self.ids[i + step]
-        self.ids[destIndex] = id
-        self.emit(QtCore.SIGNAL(\
-        "dataChanged(QModelIndex, QModelIndex)"), \
-        self.row(firstIndex, 0, QtCore.QModelIndex()), \
-        self.row(lastIndex, 1, QtCore.QModelIndex()))
-
-    def update(self, status):
-        version = int(status["playlist"])
-        size = int(status["playlistlength"])
-
-        try:
-            if version <> self.version:
-                oldSize = len(self.ids)
-                if size < oldSize:
-                    self.beginRemoveRows(QtCore.QModelIndex(), size, \
-                    oldSize - 1)
-                    del self.ids[size:oldSize]
-                    self.endRemoveRows()
-                changes = Client.cmd("plchangesposid", self.version)
-                changes.sort(self.posCmp)
-                for posid in changes:
-                    pos = int(posid["cpos"])
-                    id = int(posid["id"])
-                    if pos < len(self.ids):
-                        self.ids[pos] = id
-                        self.emit(QtCore.SIGNAL(
-                        "dataChanged(QModelIndex, QModelIndex)"), \
-                       self.row(pos, 0, QtCore.QModelIndex()), \
-                        self.row(pos, 1, QtCore.QModelIndex()))
-                    else:
-                        self.beginInsertRows(QtCore.QModelIndex(),
-                        len(self.ids), len(self.ids))
-                        self.ids.append(id)
-                        self.endInsertRows()
-                self.version = version
-            if "songid" in status:
-                songid = int(status["songid"])
-                if songid <> self.songid:
-                    self.setSongId(songid)
-            else:
-                try:
-                    i = self.ids.row(self.songid)
-                    self.songid = PlaylistModel.NO_SONGID
-                    self.emit(QtCore.SIGNAL(\
-                    "dataChanged(QModelIndex, QModelIndex)"), \
-                    self.row(i, 0, QtCore.QModelIndex()), \
-                    self.row(i, 1, QtCore.QModelIndex()))
-                except:
-                    pass
-            self.emit(QtCore.SIGNAL("saveable"), size > 0)
-        except (MPDError, socket.error) as e:
-            self.connector.setBroken(e)
-
-    def posCmp(self, a, b):
-        return cmp(int(a["cpos"]), int(b["cpos"]))
-
-    def setSongId(self, songid):
-        if songid <> self.songid:
-            oldId = self.songid
-            self.songid = songid
-
-            try:
-                oldIndex = self.ids.row(oldId)
-                self.emit(QtCore.SIGNAL(\
-                "dataChanged(QModelIndex, QModelIndex)"), \
-                self.row(oldIndex, 0, QtCore.QModelIndex()), \
-                self.row(oldIndex, 1, QtCore.QModelIndex()))
-            except:
-                pass
-
-            try:
-                newIndex = self.ids.row(self.songid)
-                self.emit(QtCore.SIGNAL(\
-                "dataChanged(QModelIndex, QModelIndex)"), \
-                self.row(newIndex, 0, QtCore.QModelIndex()), \
-                self.row(newIndex, 1, QtCore.QModelIndex()))
-            except:
-                # If the id in question is not found, the playlist is
-                # inconsistent. The poller and setVersion will take care of
-                # it.
-                pass
-
-    def play(self, index):
-        self.playRow(index.row())
-
-    def playRow(self, row):
-        # this is called by both self.play and PlaylistView.play
-        try:
-            id = self.ids[row]
-            self.setSongId(id)
-            Client.cmd("playid", id)
-            self.emit(QtCore.SIGNAL("playing"))
-        except (MPDError, socket.error) as e:
-            self.connector.setBroken(e)
-
-    def deleteRows(self, rows):
-
-        # We speed things up by looking for runs.
-
-        run = []
-        offset = 0
-
-        for row in sorted(rows):
-            if len(run) == 0:
-                run = [row]
-
-            elif row - run[-1] == 1:
-                run.append(row)
-            else:
-                str(run[-1] - offset)
-                self.beginRemoveRows(QtCore.QModelIndex(), run[0] - offset, \
-                run[-1] - offset)
-                for rowInRun in run:
-                    id = self.ids[rowInRun - offset]
-                    if id == self.songid:
-                        self.emit(QtCore.SIGNAL("stopped"))
-                    Client.cmd("deleteid", id)
-                del self.ids[run[0] - offset: run[-1] - offset + 1]
-                self.endRemoveRows()
-                offset = offset + len(run)
-                run = [row]
-                print "We start a new run: " + str(run)
-        str(run[-1] - offset)
-        self.beginRemoveRows(QtCore.QModelIndex(), run[0] - offset, \
-        run[-1] - offset)
-        for rowInRun in run:
-            id = self.ids[rowInRun - offset]
-            if id == self.songid:
-                self.emit(QtCore.SIGNAL("stopped"))
-            Client.cmd("deleteid", id)
-        del self.ids[run[0] - offset: run[-1] - offset + 1]
-        self.endRemoveRows()
-
-        self.emit(QtCore.SIGNAL("saveable"), len(self.ids) > 0)
-
-    def setUris(self, uriToPlay, uris):
-        try:
-            self.beginRemoveRows(QtCore.QModelIndex(), 0, len(self.ids) - 1)
-            Client.cmd("clear")
-            del self.ids[:]
-            self.endRemoveRows()
-
-            rowToPlay = -1
-            self.beginInsertRows(QtCore.QModelIndex(), 0, len(uris) - 1)
-            for row in xrange(len(uris)):
-                self.ids.append(Client.cmd("addid", uris[row]))
-                if uris[row] == uriToPlay:
-                    rowToPlay = row
-            self.endInsertRows()
-            self.playRow(rowToPlay)
-            self.emit(QtCore.SIGNAL("saveable"), True)
-        except (MPDError, socket.error) as e:
-            self.connector.setBroken(e)
-
-    def parent(self, index):
-        return QtCore.QModelIndex()
-
-    def headerData(self, section, orientation, role=QtCore.Qt.DisplayRole):
-        if orientation == QtCore.Qt.Horizontal and \
-        role == QtCore.Qt.DisplayRole:
-            if section == 0:
-                return "Name"
-            if section == 1:
-                return "Time"
-        return None
-
-    def hasChildren(self, parent):
-        if parent.isValid():
-            return False
-        return True
-
-    def song(self, index):
-        try:
-            return Client.cmd("playlistid", self.ids[index.row()])[0]
-        except (MPDError, socket.error) as e:
-            self.connector.setBroken(e)
-
-    def showCombinedTime(self, indexes):
-        # We catch exceptions in the calling method
-
-        if len(indexes) > 0:
-            time = 0
-            for index in indexes:
-                song = Client.cmd("playlistid", self.ids[index.row()])[0]
-                time = time + int(song["time"])
-            self.selectedLength.setText(Parser.prettyTime(time))
-        else:
-            self.selectedLength.setText("")
-
-
-class PlaylistView(QtGui.QTreeView):
-
-    def __init__(self, parent=None):
-        super(PlaylistView, self).__init__(parent)
-        self.setEnabled(True)
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.setDropIndicatorShown(True)
-        self.setSelectionMode(self.ExtendedSelection)
-        self.setSelectionBehavior(self.SelectRows)
-        delete = QtGui.QAction("Delete", self)
-        self.connect(delete, QtCore.SIGNAL("triggered()"), self.deleteSlot)
-        self.row = None
-        self.actions = [delete]
-
-    def clientConnect(self):
-        self.setEnabled(True)
-
-    def clientDisconnect(self):
-        self.setEnabled(False)
-
-    def setConnector(self, connector):
-        self.connector = connector
-
-    def contextMenuEvent(self, event):
-        display = False
-        if self.indexAt(event.pos()).isValid():
-            display = True
-            self.row = self.indexAt(event.pos())
-        else:
-            self.row = None
-        if len(self.selectedIndexes()) > 0:
-            display = True
-        if display:
-            QtGui.QMenu.exec_(self.actions, event.globalPos())
-
-    def deleteSlot(self):
-        rows = set()
-        for index in self.selectedIndexes():
-            rows.add(index.row())
-        if self.row:
-            rows.add(self.row.row())
-        self.model().deleteRows(rows)
-
-    def setModel(self, model):
-        self.connect(self, QtCore.SIGNAL("doubleClicked(QModelIndex)"), \
-        model.play)
-        QtGui.QTreeView.setModel(self, model)
-        self.connect(self.selectionModel(), \
-        QtCore.SIGNAL("selectionChanged(QItemSelection, QItemSelection)"), \
-        self.setLabel)
-
-    def play(self):
-
-        row = -1
-
-        if len(self.selectedIndexes()) > 0:
-            row = self.selectedIndexes()[0].row()
-        else:
-            try:
-                # A candidate for refactoring, yes.
-                row = self.model().ids.row(self.model().songid)
-            except:
-                if self.model().rowCount() > 0:
-                    row = 0
-        if row > -1:
-            self.model().playRow(row)
-
-    def viewportEvent(self, event):
-        if event.type() == QtCore.QEvent.ToolTip:
-
-            index = self.indexAt(event.pos())
-
-            if index.isValid():
-                tags = [("artist", "Artists: "), ("album", "Album: "), \
-                ("genre", "Genre: "), ("composer", "Composer: ")]
-                text = ""
-                first = True
-                song = self.model().song(index)
-                for tag, header in tags:
-                    if Parser.hasKey(song, tag):
-                        if first:
-                            first = False
-                        else:
-                            text = text + "\n"
-                        text = text + header + Parser.parsedValue(song, tag)
-                if len(text) > 0:
-                    QtGui.QToolTip.showText(event.globalPos(), text)
-        return QtGui.QTreeView.viewportEvent(self, event)
-
-    def setLabel(self, selected, deselected):
-        try:
-            self.model().showCombinedTime(\
-            self.selectionModel().selectedIndexes())
-        except (MPDError, socket.error) as e:
-            self.connector.setBroken(e)
-
-
 class ConnectAction(QtGui.QAction):
 
     def __init__(self, parent):
@@ -2655,8 +2125,6 @@ class SaveAction(QtGui.QAction):
 
     def save(self):
         self.playlistSaver.exec_()
-        #if self.playlistSaver.result() == QtGui.QDialog.Accepted:
-        #    self.parentWidget().updatePlaylists()
     def setConnector(self, connector):
         self.connector = connector
         self.playlistSaver.setConnector(connector)
@@ -2870,44 +2338,23 @@ class UI(kdeui.KMainWindow):
 
         splitter = QtGui.QSplitter()
         layout.addWidget(splitter)
-
-        self.dbModels = []
-
-        view = PlaylistsView()
-        self.connector.addConnectable(view)
-        self.playlistsDelegate = PlaylistsDelegate(self)
-        view.setItemDelegate(self.playlistsDelegate)
         
         client0 = Client0()
         client0.open("localhost", 6600)
         
-        treeModel = TreeModel(RootController(client0))
+        treeModel = DBModel(RootController(client0))
         treeView = TreeView(splitter)
         treeView.setIconSize(QSize(34, 34))
         treeView.doubleClicked.connect(treeModel.playAtIndex)
         treeView.setModel(treeModel)
         treeModel.changed.connect(treeView.resizeColumnsToContents)
 
-        self.playlistModel = PlaylistModel(combinedTime, self)
-        self.connector.addConnectable(self.playlistModel, \
-        Connector.UPDATEABLE)
         playlistSplitter = QtGui.QSplitter(splitter)
         playlistSplitter.setOrientation(QtCore.Qt.Vertical)
         artLabel = ArtLabel(playlistSplitter)
         artLabel.setPixmap(QtGui.QPixmap("hamster.jpg"))
-        self.playlistView = PlaylistView(playlistSplitter)
-        self.connector.addConnectable(self.playlistView)
-        self.playlistView.setModel(self.playlistModel)
-        self.connect(self.playlistModel, QtCore.SIGNAL("playing"), \
-        self.setPlaying)
-        self.connect(self.playlistModel, QtCore.SIGNAL("saveable"), \
-        saveAction.setEnabled)
-        self.connect(self.playlistModel, QtCore.SIGNAL("stopped"), \
-        self.stopPlaying)
-
-        self.connectDBModels()
-
-        self.connector.connectToClient()
+        playlistView = TreeView(playlistSplitter)
+        playlistView.setModel(PLModel(NodeController(client0)))
 
     def setConnector(self, connector):
         pass
@@ -2991,10 +2438,6 @@ class UI(kdeui.KMainWindow):
         self.connector.addConnectable(view)
         self.tabs.addTab(view, label)
 
-    def connectDBModels(self):
-        for model in self.dbModels:
-            self.connect(model, QtCore.SIGNAL("uris"), \
-            self.playlistModel.setUris)
 
     def setDragging(self, value):
         self.isDragging = True
