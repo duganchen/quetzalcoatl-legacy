@@ -2996,9 +2996,9 @@ if __name__ == "__main__":
     aboutData = kdecore.KAboutData(appName, catalog, programName, version, \
     description, license, copyright, text, homePage, bugEmail)
 
-    kdecore.KCmdLineArgs.init(sys.argv, aboutData)
+    kdecore.KCmdLineArgs.init(argv, aboutData)
     app = kdeui.KApplication()
     client = MPDClient()
     main = UI(client)
     main.show()
-    sys.exit(app.exec_())
+    exit(app.exec_())
