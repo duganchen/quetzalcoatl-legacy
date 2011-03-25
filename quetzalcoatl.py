@@ -5,6 +5,8 @@
 # and causing a fetch will cause the view's columns to be resized to the
 # contents twice.
 
+# track should be changed. It doubles as length.
+
 from sip import setapi
 
 setapi("QDate", 2)
@@ -399,7 +401,7 @@ class TreeNode(list):
             return self.__controller.icon
         
         if index.column() == 1 and role == Qt.DisplayRole:
-            return self.__controller.track
+            return self.__controller.info
         
         return None
     
@@ -455,16 +457,18 @@ class TreeModel(QtCore.QAbstractItemModel):
     The main model class used by Quetzalcoatl.    
     """
     
-    # Data changed. View resized columns to contents.
-    changed = pyqtSignal(QModelIndex)
-    
     # http://benjamin-meyer.blogspot.com/2006/10/dynamic-models.html
     
-    def __init__(self, controller, parent=None):
+    def __init__(self, node, parent=None):
         """ Initializes the model. """
         super(TreeModel, self).__init__(parent)
-        self.__root = TreeNode(controller)
+        self.__root = node
         self.__root.isFetched = False
+    
+    @property
+    def root(self):
+        """ Grants access to the root. """
+        return self.__root
 
     def node(self, index):
         """ Returns the node for the given index. """
@@ -522,7 +526,6 @@ class TreeModel(QtCore.QAbstractItemModel):
         
         node.isFetched = True
         self.endInsertRows()
-        self.changed.emit(parent)
 
     def data(self, index, role=Qt.DisplayRole):
         
@@ -582,7 +585,7 @@ class TreeModel(QtCore.QAbstractItemModel):
         if node.song:
             node.play()
 
-class DBModel(TreeModel):
+class DatabaseModel(TreeModel):
     def headerData(self, section, orientation, role = Qt.DisplayRole):
         if role == Qt.DisplayRole and orientation == Qt.Horizontal:
             if section == 0:
@@ -591,7 +594,8 @@ class DBModel(TreeModel):
                 return "Track"
         return None
 
-class PLModel(TreeModel):
+class PlaylistModel(TreeModel):
+
     def headerData(self, section, orientation, role = Qt.DisplayRole):
         if role == Qt.DisplayRole and orientation == Qt.Horizontal:
             if section == 0:
@@ -599,16 +603,33 @@ class PLModel(TreeModel):
             if section == 1:
                 return "Time"
         return None
+    
+    def setData(self, playlist, length):
+        # Well, this should work the first time...
+        self.beginInsertRows(QModelIndex(), 0, len(playlist) - 1)
+        for song in playlist:
+            self.root.append(TreeNode(PlaylistSongController(client, song)))
+        self.endInsertRows()
+        
 
 class TreeView(QTreeView):
     def __init__(self, parent = None):
         super(TreeView, self).__init__(parent)
         self.expanded.connect(self.resizeColumnsToContents)
         self.collapsed.connect(self.resizeColumnsToContents)
+        self.setIconSize(QSize(34, 34))
     
     def resizeColumnsToContents(self, QModelIndex):
         self.resizeColumnToContents(0)
         self.resizeColumnToContents(1)
+    
+    def rowsInserted(self, parent, start, end):
+        super(TreeView, self).rowsInserted(parent, start, end)
+        self.resizeColumnsToContents(None)
+    
+    def resizeEvent(self, event):
+        super(TreeView, self).resizeEvent(event)
+        self.resizeColumnsToContents(None)
 
 
 class NodeController(object):
@@ -665,8 +686,8 @@ class NodeController(object):
         return None
     
     @property
-    def track(self):
-        """ Returns the track. Or None. """
+    def info(self):
+        """ Returns the track or length. Or None. """
         return None
     
     def play(self, node):
@@ -1174,7 +1195,7 @@ class AlbumSongController(SongController):
     """ Tracks are only displayed in the context of albums. """
     
     @property
-    def track(self):
+    def info(self):
         if 'track' in self.song:
             return self.song['track']
         return None
@@ -1188,6 +1209,13 @@ class AlbumSongController(SongController):
             if file == current:
                 self.client.playid(id)
         self.client.poll()
+
+class PlaylistSongController(SongController):
+    """ A song in the content of the current playlist. """
+
+    @property
+    def info(self):
+        return str(self.song['time'])
 
 class ComposerController(NodeController):
     def __init__(self, client, composer):
@@ -1298,6 +1326,11 @@ class DirectoryController(NodeController):
     @property
     def song(self):
         return self.__song
+    
+    def play(self, node):
+        if node.song is not None:
+            self.client.clear()
+            self.client.playid(self.client.addid(node.song['file']))
 
 class Client0(QObject):
     """
@@ -1423,7 +1456,7 @@ class Client0(QObject):
         
         return False
 
-### Production code begins here
+### OLD code begins here
 
 
 class Parser(object):
@@ -2340,21 +2373,24 @@ class UI(kdeui.KMainWindow):
         layout.addWidget(splitter)
         
         client0 = Client0()
-        client0.open("localhost", 6600)
+
         
-        treeModel = DBModel(RootController(client0))
+        treeModel = DatabaseModel(TreeNode(RootController(client0)))
         treeView = TreeView(splitter)
-        treeView.setIconSize(QSize(34, 34))
         treeView.doubleClicked.connect(treeModel.playAtIndex)
         treeView.setModel(treeModel)
-        treeModel.changed.connect(treeView.resizeColumnsToContents)
+        treeModel.rowsInserted.connect(treeView.rowsInserted)
 
         playlistSplitter = QtGui.QSplitter(splitter)
         playlistSplitter.setOrientation(QtCore.Qt.Vertical)
         artLabel = ArtLabel(playlistSplitter)
         artLabel.setPixmap(QtGui.QPixmap("hamster.jpg"))
         playlistView = TreeView(playlistSplitter)
-        playlistView.setModel(PLModel(NodeController(client0)))
+        playlistModel = PlaylistModel(TreeNode(NodeController(client0)))
+        playlistModel.rowsInserted.connect(playlistView.rowsInserted)
+        playlistView.setModel(playlistModel)
+        client0.playlist.connect(playlistModel.setData)
+        client0.open("localhost", 6600)
 
     def setConnector(self, connector):
         pass
