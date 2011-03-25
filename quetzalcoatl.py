@@ -5,15 +5,15 @@
 # and causing a fetch will cause the view's columns to be resized to the
 # contents twice.
 
-import sip
+from sip import setapi
 
-sip.setapi("QDate", 2)
-sip.setapi("QDateTime", 2)
-sip.setapi("QTextStream", 2)
-sip.setapi("QTime", 2)
-sip.setapi("QVariant", 2)
-sip.setapi("QString", 2)
-sip.setapi("QUrl", 2)
+setapi("QDate", 2)
+setapi("QDateTime", 2)
+setapi("QTextStream", 2)
+setapi("QTime", 2)
+setapi("QVariant", 2)
+setapi("QString", 2)
+setapi("QUrl", 2)
 
 import sys
 import os
@@ -93,6 +93,7 @@ class RandomSong(Song):
     
     def __ne__(self, other):
         return self.title.lower() != other.title.lower()
+    
     
     def __gt__(self, other):
         return self.title.lower() > other.title.lower()
