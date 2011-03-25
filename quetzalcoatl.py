@@ -370,7 +370,6 @@ class TreeNode(list):
         self.__parent = None
         self.__icon = None
         self.__controller = controller
-        controller.node = self
         self.__song = None
         self.__isFetched = False
 
@@ -449,6 +448,11 @@ class TreeNode(list):
     def play(self):
         """ Starts playing at this node. """
         self.__controller.play(self)
+    
+    @property
+    def controller(self):
+        """ Returns the controller. """
+        return self.__controller
 
 
 class TreeModel(QtCore.QAbstractItemModel):
@@ -606,6 +610,7 @@ class PlaylistModel(TreeModel):
     
     def setData(self, playlist, length):
         # Well, this should work the first time...
+        client = self.root.controller.client
         self.beginInsertRows(QModelIndex(), 0, len(playlist) - 1)
         for song in playlist:
             self.root.append(TreeNode(PlaylistSongController(client, song)))
@@ -1215,7 +1220,11 @@ class PlaylistSongController(SongController):
 
     @property
     def info(self):
+        """ Returns data for the second column """
         return str(self.song['time'])
+    
+    def play(self, node):
+        self.client.playid(node.song['id'])
 
 class ComposerController(NodeController):
     def __init__(self, client, composer):
@@ -2389,6 +2398,7 @@ class UI(kdeui.KMainWindow):
         playlistModel = PlaylistModel(TreeNode(NodeController(client0)))
         playlistModel.rowsInserted.connect(playlistView.rowsInserted)
         playlistView.setModel(playlistModel)
+        playlistView.doubleClicked.connect(playlistModel.playAtIndex)
         client0.playlist.connect(playlistModel.setData)
         client0.open("localhost", 6600)
 
@@ -2498,7 +2508,6 @@ if __name__ == "__main__":
 
     kdecore.KCmdLineArgs.init(argv, aboutData)
     app = kdeui.KApplication()
-    client = MPDClient()
-    main = UI(client)
+    main = UI(None)
     main.show()
     exit(app.exec_())
