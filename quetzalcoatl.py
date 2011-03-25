@@ -224,7 +224,6 @@ class SanitizedClient(object):
         self.__sanitizers['random'] = bool
         self.__sanitizers['single'] = bool
         self.__sanitizers['track'] = self.__sanitized_track
-        self.__sanitizers['audio'] = self.__sanitize_audio
         self.__sanitizers['time'] = self.__sanitize_time
         self.__sanitizers['title'] = self.__sanitize_tag
         self.__sanitizers['author'] = self.__sanitize_tag
@@ -234,15 +233,6 @@ class SanitizedClient(object):
         self.__sanitizers['composer'] = self.__sanitize_tag
         self.__sanitizers['mixrampdb'] = float
         self.__client = client
-    
-    @classmethod
-    def __sanitize_audio(cls, value):
-        """
-        Sanitize the audio value.
-        
-        Example: 'audio': '44100:24:2'
-        """
-        return tuple(int(x) for x in value.split(':'))
 
     @classmethod
     def __sanitize_time(cls, value):
@@ -433,6 +423,10 @@ class TreeNode(list):
         Fetches and returns data.
         """
         return self.__controller.fetch()
+    
+    def play(self):
+        """ Starts playing at this node. """
+        self.__controller.play(self)
 
 class TreeModel(QtCore.QAbstractItemModel):
 
@@ -568,6 +562,12 @@ class TreeModel(QtCore.QAbstractItemModel):
         
         node = self.node(parent)
         return self.createIndex(row, column, node[row])
+    
+    def playAtIndex(self, index):
+        """ Handles the view's activation signal """
+        node = index.internalPointer()
+        if node.song:
+            node.play()
 
 class TreeView(QTreeView):
     def __init__(self, parent = None):
@@ -637,6 +637,10 @@ class NodeController(object):
     def track(self):
         """ Returns the track. Or None. """
         return None
+    
+    def play(self, node):
+        """ Plays the music in the specified node. """
+        pass
 
 
 class RootController(NodeController):
@@ -1128,6 +1132,12 @@ class SongController(NodeController):
     def song(self):
         """ Returns the song. """
         return self.__song
+    
+    def play(self, node):
+        """ Playing a song outside of its album just plays the song. """
+        self.client.clear()
+        self.client.playid(self.client.addid(node.song['file']))
+        self.client.poll()
 
 class AlbumSongController(SongController):
     """ Tracks are only displayed in the context of albums. """
@@ -1137,6 +1147,16 @@ class AlbumSongController(SongController):
         if 'track' in self.song:
             return self.song['track']
         return None
+    
+    def play(self, node):
+        """ When you play a song on an album, you play the whole album. """
+        current = node.song['file']
+        self.client.clear()
+        for file in map(lambda x: x.song['file'], node.parent):
+            id = self.client.addid(file)
+            if file == current:
+                self.client.playid(id)
+        self.client.poll()
 
 class ComposerController(NodeController):
     def __init__(self, client, composer):
@@ -2864,6 +2884,7 @@ class UI(kdeui.KMainWindow):
         treeModel = TreeModel(RootController(client0))
         treeView = TreeView(splitter)
         treeView.setIconSize(QSize(34, 34))
+        treeView.doubleClicked.connect(treeModel.playAtIndex)
         treeView.setModel(treeModel)
         treeModel.changed.connect(treeView.resizeColumnsToContents)
 
