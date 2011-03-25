@@ -15,9 +15,8 @@ setapi("QVariant", 2)
 setapi("QString", 2)
 setapi("QUrl", 2)
 
-import sys
-import os
-import types
+from sys import argv, exit
+from types import ListType
 from PyQt4 import QtCore, QtGui
 from PyQt4.QtCore import QAbstractItemModel, QObject
 from mpd import MPDClient, MPDError
@@ -26,9 +25,9 @@ from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
 from PyQt4.QtGui import QIcon, QTreeView
 from PyKDE4.kdeui import KIcon
 import socket
-from sys import maxint
-import posixpath
 
+# We're not supporting MPD servers running on Windows. Sorry.
+from posixpath import basename, splitext
 
 # The root menu of my iPod video 5.5G is:
 # Playlists
@@ -47,7 +46,7 @@ class Song(dict):
     def title(self):
         if 'title' in self:
             return self['title']
-        return os.path.splitext(os.path.basename(self["file"]))[0]
+        return splitext(basename(self["file"]))[0]
     
     @property
     def key(self):
@@ -93,7 +92,6 @@ class RandomSong(Song):
     
     def __ne__(self, other):
         return self.title.lower() != other.title.lower()
-    
     
     def __gt__(self, other):
         return self.title.lower() > other.title.lower()
@@ -267,7 +265,7 @@ class SanitizedClient(object):
         lsinfo() and status() can both return a playlist key.
         """
         try:
-            posixpath.splitext(value)
+            splitext(value)
             return value
         except:
             return int(value)
@@ -1114,7 +1112,7 @@ class SongController(NodeController):
     def icon(self):
         """ Returns the icon. """
         
-        extension = os.path.splitext(self.__song['file'])[1].lower()
+        extension = splitext(self.__song['file'])[1].lower()
         
         try:
             return self.icons[extension]
@@ -1227,7 +1225,7 @@ class DirectoryController(NodeController):
         if self.__info is None:
             return 'Directories'
         if 'directory' in self.__info:
-            return posixpath.basename(self.__info['directory'])
+            return basename(self.__info['directory'])
         return self.song.title
     
     @property
@@ -1239,7 +1237,7 @@ class DirectoryController(NodeController):
         if self.song is None:
             return self.icons['folder-sound']
         
-        extension = os.path.splitext(self.song['file'])[1].lower()
+        extension = splitext(self.song['file'])[1].lower()
         
         try:
             return self.icons[extension]
@@ -1404,7 +1402,7 @@ class Parser(object):
         if not cls.hasKey(song, key):
             return values
 
-        if type(song[key]) == types.ListType:
+        if type(song[key]) == ListType:
             values = set()
             for value in song[key]:
                 if len(value.strip()) > 0:
@@ -1424,7 +1422,7 @@ class Parser(object):
     def title(cls, song):
         if cls.hasKey(song, "title"):
             return song["title"]
-        return os.path.splitext(os.path.basename(song["file"]))[0]
+        return splitext(basename(song["file"]))[0]
 
     @classmethod
     def length(cls, song):
