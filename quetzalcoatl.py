@@ -534,8 +534,8 @@ class TreeModel(QtCore.QAbstractItemModel):
         if index.isValid():
             node = self.node(index)
             if node.song is not None:
-                flags = flags | QtCore.Qt.ItemIsSelectable
-                flags = flags | QtCore.Qt.ItemIsDragEnabled
+                flags = flags | Qt.ItemIsSelectable
+                flags = flags | Qt.ItemIsDragEnabled
         return flags
     
     def parent(self, index):
