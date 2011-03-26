@@ -616,10 +616,23 @@ class PlaylistModel(TreeModel):
         # Well, this should work the first time...
         client = self.root.controller.client
         node = lambda song: TreeNode(PlaylistSongController(client, song))
-        self.beginInsertRows(QModelIndex(), 0, len(changes) - 1)
-        for song in changes:
-            self.root.append(node(song))
-        self.endInsertRows()
+        
+        print 'length=' + str(length)
+        oldLength = len(self.root)
+        print 'oldLength=' + str(len(self.root))
+        
+        if length < oldLength:
+            self.beginRemoveRows(QModelIndex(), length, oldLength - 1)
+            print 'Removing rows'
+            del self.root[length:]
+            self.endRemoveRows()
+        
+        if len(self.root) < length:
+            self.beginInsertRows(QModelIndex(), len(self.root) - 1, len(changes) - 1)
+            for song in changes:
+                print 'inserting row'
+                self.root.append(node(song))
+            self.endInsertRows()
         
 
 class TreeView(QTreeView):
