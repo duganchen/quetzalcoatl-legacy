@@ -608,12 +608,13 @@ class PlaylistModel(TreeModel):
                 return "Time"
         return None
     
-    def setData(self, playlist, length):
+    def updatePlaylist(self, changes, length):
         # Well, this should work the first time...
         client = self.root.controller.client
-        self.beginInsertRows(QModelIndex(), 0, len(playlist) - 1)
-        for song in playlist:
-            self.root.append(TreeNode(PlaylistSongController(client, song)))
+        node = lambda song: TreeNode(PlaylistSongController(client, song))
+        self.beginInsertRows(QModelIndex(), 0, len(changes) - 1)
+        for song in changes:
+            self.root.append(node(song))
         self.endInsertRows()
         
 
@@ -2399,7 +2400,7 @@ class UI(kdeui.KMainWindow):
         playlistModel.rowsInserted.connect(playlistView.rowsInserted)
         playlistView.setModel(playlistModel)
         playlistView.doubleClicked.connect(playlistModel.playAtIndex)
-        client0.playlist.connect(playlistModel.setData)
+        client0.playlist.connect(playlistModel.updatePlaylist)
         client0.open("localhost", 6600)
 
     def setConnector(self, connector):
