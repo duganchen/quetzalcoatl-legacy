@@ -372,6 +372,10 @@ class TreeNode(list):
         self.__controller = controller
         self.__song = None
         self.__isFetched = False
+    
+    def __setitem__(self, key, value):
+        value.__parent = self
+        super(TreeNode, self).__setitem__(key, value)
 
     def append(self, child):
         """ Appends a child to the node. """
