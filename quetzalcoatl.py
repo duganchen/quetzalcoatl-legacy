@@ -629,8 +629,7 @@ class PlaylistModel(TreeModel):
         
         if len(self.root) < length:
             self.beginInsertRows(QModelIndex(), len(self.root) - 1, len(changes) - 1)
-            for song in changes:
-                print 'inserting row'
+            for song in changes[oldLength:]:
                 self.root.append(node(song))
             self.endInsertRows()
         
