@@ -42,6 +42,7 @@ from posixpath import basename, splitext
 # Composers
 # Audiobooks
 
+
 class Song(dict):
     """ A song. """
     @property
@@ -410,9 +411,14 @@ class TreeNode(list):
         
         return None
     
-    def row(self, x):
-        """ Returns the(row) of child node x. """
-        return self.index(x)
+    @property
+    def row(self):
+        """ Returns the(row) of this node. """
+        if self.__parent is not None:
+            try:
+                return self.__parent.index(self)
+            except ValueError:
+                return 0
     
     @property
     def icon(self):
@@ -488,7 +494,15 @@ class TreeModel(QtCore.QAbstractItemModel):
     
     def rowCount(self, parent):
         """ Returns the number of rows. """
-        return len(self.node(parent))
+        if parent.column() > 2:
+            return 0
+        
+        if not parent.isValid():
+            parentNode = self.__root
+        else:
+            parentNode = parent.internalPointer()
+        
+        return len(parentNode)
     
     def columnCount(self, parent):
         """ Returns the number of columns. """
@@ -564,21 +578,14 @@ class TreeModel(QtCore.QAbstractItemModel):
         
         if not index.isValid():
             return QModelIndex()
-        
-        node = index.internalPointer()
-        if node.parent is None or node.parent == self.__root:
+        childNode = index.internalPointer()
+        parentNode = childNode.parent
+        if not parentNode:
             return QModelIndex()
-        
-        grandparent = node.parent.parent
-        if grandparent is None:
+        if parentNode == self.__root:
             return QModelIndex()
+        return self.createIndex(parentNode.row, 0, parentNode)
         
-        try:
-            i = grandparent.index(node.parent)
-        except:
-            return QModelIndex()
-        return self.createIndex(i, 0, node.parent)
-
     def index(self, row, column, parent=QModelIndex()):
         
         """ returns an index for the given parameters. """
@@ -586,8 +593,14 @@ class TreeModel(QtCore.QAbstractItemModel):
         if not self.hasIndex(row, column, parent):
             return QModelIndex()
         
-        node = self.node(parent)
-        return self.createIndex(row, column, node[row])
+        if not parent.isValid():
+            parentNode = self.__root
+        else:
+            parentNode = parent.internalPointer()
+        try:
+            return self.createIndex(row, column, parentNode[row])
+        except:
+            return QModelIndex()
     
     def playAtIndex(self, index):
         """ Handles the view's activation signal """
@@ -634,8 +647,11 @@ class PlaylistModel(TreeModel):
                 break
             self.root[row] = node(song)
             print self.root[row].controller.song
-            self.dataChanged.emit(self.index(row, 0), self.index(row, 0))
             lastIndex = lastIndex + 1
+            
+            print self.root[row].controller.label
+            print self.data(self.index(row, 0), Qt.DisplayRole)
+            self.dataChanged.emit(self.index(row, 0), self.index(row, 0))
             
         if oldLength < length:
             self.beginInsertRows(QModelIndex(), len(self.root), len(self.root) + len(changes) - lastIndex + 1)
