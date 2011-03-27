@@ -17,7 +17,7 @@ setapi("QVariant", 2)
 setapi("QString", 2)
 setapi("QUrl", 2)
 
-from sys import argv, exit
+from sys import argv, exit, maxint
 from types import ListType
 from PyQt4 import QtCore, QtGui
 from PyQt4.QtCore import QAbstractItemModel, QObject
@@ -374,7 +374,9 @@ class TreeNode(list):
         self.__isFetched = False
     
     def __setitem__(self, key, value):
+        print "setting item"
         value.__parent = self
+        print "Parent just set."
         super(TreeNode, self).__setitem__(key, value)
 
     def append(self, child):
@@ -573,9 +575,9 @@ class TreeModel(QtCore.QAbstractItemModel):
         
         try:
             i = grandparent.index(node.parent)
-            return self.createIndex(i, 0, node.parent)
         except:
             return QModelIndex()
+        return self.createIndex(i, 0, node.parent)
 
     def index(self, row, column, parent=QModelIndex()):
         
@@ -617,19 +619,27 @@ class PlaylistModel(TreeModel):
         client = self.root.controller.client
         node = lambda song: TreeNode(PlaylistSongController(client, song))
         
-        print 'length=' + str(length)
         oldLength = len(self.root)
-        print 'oldLength=' + str(len(self.root))
+        print changes
         
         if length < oldLength:
             self.beginRemoveRows(QModelIndex(), length, oldLength - 1)
-            print 'Removing rows'
             del self.root[length:]
             self.endRemoveRows()
         
-        if len(self.root) < length:
-            self.beginInsertRows(QModelIndex(), len(self.root) - 1, len(changes) - 1)
-            for song in changes[oldLength:]:
+        lastIndex = 0
+        for song in changes:
+            row = song['pos']
+            if row > oldLength - 1:
+                break
+            self.root[row] = node(song)
+            print self.root[row].controller.song
+            self.dataChanged.emit(self.index(row, 0), self.index(row, 0))
+            lastIndex = lastIndex + 1
+            
+        if oldLength < length:
+            self.beginInsertRows(QModelIndex(), len(self.root), len(self.root) + len(changes) - lastIndex + 1)
+            for song in changes[lastIndex:]:
                 self.root.append(node(song))
             self.endInsertRows()
         
@@ -1413,7 +1423,7 @@ class Client0(QObject):
         self.__poller = SanitizedClient(MPDClient())
         self.__poller.connect(host, port)
         self.__status.clear()
-        self.__timer.start()
+        #self.__timer.start()
         self.isConnected.emit(True)
     
     def close(self):
@@ -1429,10 +1439,13 @@ class Client0(QObject):
         status = self.__poller.status()
 
         if self.__updated(status, 'playlist'):
-            self.__status['playlist'] = status['playlist']
-            playlist = map(lambda x: PlaylistSong(x), self.playlistinfo())
+            version = maxint - 1
+            if 'playlist' in self.__status:
+                version = self.__status['playlist']
+            playlist = map(lambda x: PlaylistSong(x), self.plchanges(version))
             playlist.sort()
             self.playlist.emit(playlist, status['playlistlength'])
+            self.__status['playlist'] = status['playlist']
         
         if self.__updated(status, 'repeat'):
             self.__status['repeat'] = status['repeat']
@@ -2528,3 +2541,4 @@ if __name__ == "__main__":
     main = UI(None)
     main.show()
     exit(app.exec_())
+
