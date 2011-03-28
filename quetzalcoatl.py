@@ -357,7 +357,7 @@ class SanitizedClient(object):
         return attribute
 
 
-class TreeNode(list):
+class Node(list):
     
     """
     A node for the tree in the left side of the GUI.
@@ -365,7 +365,7 @@ class TreeNode(list):
     
     def __init__(self, controller):
         """
-        Creates a TreeNode.
+        Creates a Node.
         """
         #self.__children = []
         self.__parent = None
@@ -375,15 +375,13 @@ class TreeNode(list):
         self.__isFetched = False
     
     def __setitem__(self, key, value):
-        print "setting item"
         value.__parent = self
-        print "Parent just set."
-        super(TreeNode, self).__setitem__(key, value)
+        super(Node, self).__setitem__(key, value)
 
     def append(self, child):
         """ Appends a child to the node. """
         child.parent = self
-        super(TreeNode, self).append(child)
+        super(Node, self).append(child)
     
     @property
     def parent(self):
@@ -399,6 +397,7 @@ class TreeNode(list):
         """
         Returns the data for the specified column and display role.
         """
+        
         
         if index.column() == 0  and role == Qt.DisplayRole:
             return self.__controller.label.decode("utf-8")
@@ -630,10 +629,9 @@ class PlaylistModel(TreeModel):
     def updatePlaylist(self, changes, length):
         # Well, this should work the first time...
         client = self.root.controller.client
-        node = lambda song: TreeNode(PlaylistSongController(client, song))
+        node = lambda song: Node(PlaylistSongController(client, song))
         
         oldLength = len(self.root)
-        print changes
         
         if length < oldLength:
             self.beginRemoveRows(QModelIndex(), length, oldLength - 1)
@@ -646,11 +644,8 @@ class PlaylistModel(TreeModel):
             if row > oldLength - 1:
                 break
             self.root[row] = node(song)
-            print self.root[row].controller.song
             lastIndex = lastIndex + 1
             
-            print self.root[row].controller.label
-            print self.data(self.index(row, 0), Qt.DisplayRole)
             self.dataChanged.emit(self.index(row, 0), self.index(row, 0))
             
         if oldLength < length:
@@ -659,6 +654,8 @@ class PlaylistModel(TreeModel):
                 self.root.append(node(song))
             self.endInsertRows()
         
+        print self.root[0].controller.label
+        print self.root[0].controller.info
 
 class TreeView(QTreeView):
     def __init__(self, parent = None):
@@ -751,14 +748,14 @@ class RootController(NodeController):
     
     def fetch(self):
         nodes = []
-        nodes.append(TreeNode(PlaylistsController(self.client)))
-        nodes.append(TreeNode(ArtistsController(self.client)))
-        nodes.append(TreeNode(AlbumsController(self.client)))
-        nodes.append(TreeNode(AlbumArtistsController(self.client)))
-        nodes.append(TreeNode(SongsController(self.client)))
-        nodes.append(TreeNode(GenresController(self.client)))
-        nodes.append(TreeNode(ComposersController(self.client)))
-        nodes.append(TreeNode(DirectoryController(self.client)))
+        nodes.append(Node(PlaylistsController(self.client)))
+        nodes.append(Node(ArtistsController(self.client)))
+        nodes.append(Node(AlbumsController(self.client)))
+        nodes.append(Node(AlbumArtistsController(self.client)))
+        nodes.append(Node(SongsController(self.client)))
+        nodes.append(Node(GenresController(self.client)))
+        nodes.append(Node(ComposersController(self.client)))
+        nodes.append(Node(DirectoryController(self.client)))
         return nodes
 
 
@@ -786,7 +783,7 @@ class ArtistsController(NodeController):
         """ Fetches and returns artists. """
         f = lambda x: len(x.strip()) > 0
         artists = sorted(filter(f, self.client.list('artist')), key=str.lower)
-        node = lambda artist: TreeNode(ArtistController(self.client, artist))
+        node = lambda artist: Node(ArtistController(self.client, artist))
         return map(node, artists)
 
     @property
@@ -806,7 +803,7 @@ class AlbumsController(NodeController):
         """ Fetches and returns albums. """
         f = lambda x: len(x.strip()) > 0
         raw = self.client.list('album')
-        cd = lambda cd: TreeNode(AlbumController(self.client, cd))
+        cd = lambda cd: Node(AlbumController(self.client, cd))
         return map(cd, sorted(filter(f, raw), key=str.lower))
     
     @property
@@ -823,7 +820,7 @@ class AlbumArtistsController(NodeController):
     def fetch(self):
         raw = self.client.list('AlbumArtist')
         f = lambda x: len(x.strip()) > 0
-        node = lambda x: TreeNode(AlbumArtistController(self.client, x))
+        node = lambda x: Node(AlbumArtistController(self.client, x))
         return map(node, sorted(filter(f, raw)))
     
     @property
@@ -845,7 +842,7 @@ class AlbumArtistController(NodeController):
         for song in raw:
             if 'album' in song and len(song['album']) > 0:
                 albums.add(song['album'])
-        node = lambda album: TreeNode(CompilationAlbumController(self.client, self.__artist, album))
+        node = lambda album: Node(CompilationAlbumController(self.client, self.__artist, album))
         return map(node, sorted(albums))
     
     @property
@@ -863,7 +860,7 @@ class CompilationAlbumController(NodeController):
     
     def fetch(self):
         f = lambda x: 'albumartist' in x and x['albumartist'] == self.__artist
-        node = lambda x: TreeNode(AlbumSongController(self.client, x))
+        node = lambda x: Node(AlbumSongController(self.client, x))
         raw = self.client.find('album', self.__album)
         return map(node, sorted(map(AlbumSong, filter(f, raw))))
     
@@ -879,7 +876,7 @@ class SongsController(NodeController):
 
     def fetch(self):
         raw = self.client.listallinfo()
-        node = lambda x: TreeNode(SongController(self.client, x))
+        node = lambda x: Node(SongController(self.client, x))
         f = lambda x: 'file' in x
         return map(node, sorted(map(RandomSong, filter(f, raw))))
     
@@ -900,7 +897,7 @@ class AlbumController(NodeController):
     def fetch(self):
         """ Fetches and returns the album's songs """
         raw = self.client.find('album', self.__album)
-        node = lambda song: TreeNode(AlbumSongController(self.client, song))
+        node = lambda song: Node(AlbumSongController(self.client, song))
         return map(node, sorted(map(AlbumSong, raw)))
     
     @property
@@ -919,7 +916,7 @@ class GenresController(NodeController):
         """ Fetches the list of genres. """
         f = lambda x: len(x.strip()) > 0
         raw = self.client.list('genre')
-        node = lambda genre: TreeNode(
+        node = lambda genre: Node(
                     GenreController(self.client, genre))
         return map(node, sorted(filter(f, raw)))
     
@@ -939,11 +936,11 @@ class GenreController(NodeController):
         self.__genre = genre
     
     def fetch(self):
-        nodes = [TreeNode(GenreSongsController(self.client, self.__genre))]
-        nodes.append(TreeNode(GenreCompilationsController(self.client, self.__genre)))
+        nodes = [Node(GenreSongsController(self.client, self.__genre))]
+        nodes.append(Node(GenreCompilationsController(self.client, self.__genre)))
         hasArtist = lambda x: 'artist' in x and len(x['artist']) > 0
         raw = self.client.find('genre', self.__genre)
-        node = lambda x: TreeNode(GenreArtistController(self.client, self.__genre, x))
+        node = lambda x: Node(GenreArtistController(self.client, self.__genre, x))
         artist = lambda x: x['artist']
         nodes.extend(map(node, sorted(set(map(artist, filter(hasArtist, raw))))))
         return nodes
@@ -963,7 +960,7 @@ class GenreSongsController(NodeController):
     
     def fetch(self):
         raw = self.client.find('genre', self.__genre)
-        node = lambda x: TreeNode(SongController(self.client, x))
+        node = lambda x: Node(SongController(self.client, x))
         return map(node, sorted(map(RandomSong, raw)))
     
     @property
@@ -983,7 +980,7 @@ class GenreCompilationsController(NodeController):
         raw = self.client.find('genre', self.__genre)
         f = lambda x: 'albumartist' in x and len(x['albumartist'].strip()) > 0
         m = lambda x: x['albumartist']
-        node = lambda x: TreeNode(GenreCompilationArtistController(self.client, self.__genre, x))
+        node = lambda x: Node(GenreCompilationArtistController(self.client, self.__genre, x))
         return map(node, sorted(set(map(m, filter(f, raw)))))
     
     @property
@@ -1005,7 +1002,7 @@ class GenreCompilationArtistController(NodeController):
         isArtist = lambda x: 'albumartist' in x and x['albumartist'] == self.__artist
         isGenre = lambda x: 'genre' in x and x['genre'] == self.__genre
         f = lambda x: isGenre(x) and isArtist(x)
-        node = lambda x: TreeNode(GenreCompilationAlbumController(self.client, self.__genre, self.__artist, x))
+        node = lambda x: Node(GenreCompilationAlbumController(self.client, self.__genre, self.__artist, x))
         m = lambda x: x['album']
         return map(node, sorted(set(map(m, filter(f, raw)))))
     
@@ -1029,7 +1026,7 @@ class GenreCompilationAlbumController(NodeController):
         isGenre = lambda x: 'genre' in x and x['genre'] == self.__genre
         isArtist = lambda x: 'albumartist' in x and x['albumartist'] == self.__artist
         f = lambda x: isGenre(x) and isArtist(x)
-        node = lambda x: TreeNode(AlbumSongController(self.client, x))
+        node = lambda x: Node(AlbumSongController(self.client, x))
         return map(node, sorted(map(AlbumSong, filter(f, raw))))
     
     @property
@@ -1050,8 +1047,8 @@ class GenreArtistController(NodeController):
         f = lambda x: 'genre' in x and x['genre'] == self.__genre and 'album' in x and len(x['album'].strip()) > 0
         m = lambda x: x['album']
         raw = self.client.find('artist', self.__artist)
-        node = lambda x: TreeNode(GenreArtistAlbumController(self.client, self.__genre, self.__artist, x))
-        nodes = [TreeNode(GenreArtistSongsController(self.client, self.__genre, self.__artist))]
+        node = lambda x: Node(GenreArtistAlbumController(self.client, self.__genre, self.__artist, x))
+        nodes = [Node(GenreArtistSongsController(self.client, self.__genre, self.__artist))]
         nodes.extend(map(node, sorted(set(map(m, filter(f, raw))))))
         return nodes
         
@@ -1072,7 +1069,7 @@ class GenreArtistSongsController(NodeController):
     def fetch(self):
         raw = self.client.find('artist', self.__artist)
         f = lambda x: 'genre' in x and x['genre'] == self.__genre
-        node = lambda x: TreeNode(SongController(self.client, x))
+        node = lambda x: Node(SongController(self.client, x))
         return map(node, map(RandomSong, filter(f, raw)))
     
     @property
@@ -1093,7 +1090,7 @@ class GenreArtistAlbumController(NodeController):
     def fetch(self):
         raw = self.client.find('album', self.__album)
         f = lambda x: 'genre' in x and x['genre'] == self.__genre and 'artist' in x and x['artist'] == self.__artist
-        node = lambda x: TreeNode(AlbumSongController(self.client, x))
+        node = lambda x: Node(AlbumSongController(self.client, x))
         return map(node, sorted(map(AlbumSong, filter(f, raw))))
 
     @property
@@ -1111,7 +1108,7 @@ class ComposersController(NodeController):
     def fetch(self):
         raw = self.client.list('composer')
         f = lambda x: len(x.strip()) > 0
-        node = lambda x: TreeNode(ComposerController(self.client, x))
+        node = lambda x: Node(ComposerController(self.client, x))
         return map(node, sorted(filter(f, raw)))
     
     @property
@@ -1137,9 +1134,9 @@ class ArtistController(NodeController):
         
         raw = self.client.list('album', self.__artist)
         f = lambda x: len(x.strip()) > 0
-        node = lambda album: TreeNode(ArtistAlbumController(self.client,
+        node = lambda album: Node(ArtistAlbumController(self.client,
                                                 self.__artist, album))
-        result = [TreeNode(ArtistSongsController(self.client, self.__artist))]
+        result = [Node(ArtistSongsController(self.client, self.__artist))]
         result.extend(map(node, sorted(filter(f, raw), key=str.lower)))
         return result
     
@@ -1169,7 +1166,7 @@ class ArtistAlbumController(NodeController):
         """ Fetches the songs. """
         f = lambda x: 'artist' in x and x['artist'] == self.__artist
         raw = self.client.find("album", self.__album)
-        song = lambda song: TreeNode(AlbumSongController(self.client, song))
+        song = lambda song: Node(AlbumSongController(self.client, song))
         return map(song, sorted(map(AlbumSong, filter(f, raw))))
         
     @property
@@ -1192,7 +1189,7 @@ class ArtistSongsController(NodeController):
     def fetch(self):
         """ Fetches the songs. """
         raw = self.client.find('artist', self.__artist)
-        song = lambda song: TreeNode(SongController(self.client, song))
+        song = lambda song: Node(SongController(self.client, song))
         return map(song, sorted(map(RandomSong, raw)))
         
     @property
@@ -1277,9 +1274,9 @@ class ComposerController(NodeController):
     def fetch(self):
         raw = self.client.find('composer', self.__composer)
         f = lambda x: 'album' in x and len(x['album'].strip()) > 0
-        node = lambda x: TreeNode(ComposerAlbumController(self.client, self.__composer, x))
+        node = lambda x: Node(ComposerAlbumController(self.client, self.__composer, x))
         m = lambda x: x['album']
-        nodes = [TreeNode(ComposerSongsController(self.client, self.__composer))]
+        nodes = [Node(ComposerSongsController(self.client, self.__composer))]
         nodes.extend(map(node, sorted(set(map(m, filter(f, raw))))))
         return nodes
     
@@ -1298,7 +1295,7 @@ class ComposerSongsController(NodeController):
     
     def fetch(self):
         raw = self.client.find('composer', self.__composer)
-        node = lambda x: TreeNode(SongController(self.client, x))
+        node = lambda x: Node(SongController(self.client, x))
         return map(node, sorted(map(AlbumSong, raw)))
     
     @property
@@ -1318,7 +1315,7 @@ class ComposerAlbumController(NodeController):
     def fetch(self):
         raw = self.client.find('album', self.__album)
         f = lambda x: 'composer' in x and x['composer'] == self.__composer
-        node = lambda x: TreeNode(AlbumSongController(self.client, x))
+        node = lambda x: Node(AlbumSongController(self.client, x))
         return map(node, sorted(map(AlbumSong, filter(f, raw))))
     
     @property
@@ -1348,7 +1345,7 @@ class DirectoryController(NodeController):
         songs = filter(lambda x: 'file' in x, raw)
         songs = map(lambda x: RandomSong(x), songs)
         dirs.extend(songs)
-        node = lambda x: TreeNode(DirectoryController(self.client, x))
+        node = lambda x: Node(DirectoryController(self.client, x))
         return map(node, dirs)
     
     @property
@@ -2430,7 +2427,7 @@ class UI(kdeui.KMainWindow):
         client0 = Client0()
 
         
-        treeModel = DatabaseModel(TreeNode(RootController(client0)))
+        treeModel = DatabaseModel(Node(RootController(client0)))
         treeView = TreeView(splitter)
         treeView.doubleClicked.connect(treeModel.playAtIndex)
         treeView.setModel(treeModel)
@@ -2440,8 +2437,9 @@ class UI(kdeui.KMainWindow):
         playlistSplitter.setOrientation(QtCore.Qt.Vertical)
         artLabel = ArtLabel(playlistSplitter)
         artLabel.setPixmap(QtGui.QPixmap("hamster.jpg"))
-        playlistView = TreeView(playlistSplitter)
-        playlistModel = PlaylistModel(TreeNode(NodeController(client0)))
+        #playlistView = TreeView(playlistSplitter)
+        playlistView = QTreeView(playlistSplitter)
+        playlistModel = PlaylistModel(Node(NodeController(client0)))
         playlistModel.rowsInserted.connect(playlistView.rowsInserted)
         playlistView.setModel(playlistModel)
         playlistView.doubleClicked.connect(playlistModel.playAtIndex)
