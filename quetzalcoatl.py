@@ -24,7 +24,7 @@ from PyQt4.QtCore import QAbstractItemModel, QObject
 from mpd import MPDClient, MPDError
 from PyKDE4 import kdecore, kdeui
 from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
-from PyQt4.QtGui import QIcon, QTreeView
+from PyQt4.QtGui import QIcon, QStandardItem, QStandardItemModel, QTreeView
 from PyKDE4.kdeui import KIcon
 import socket
 
@@ -42,7 +42,71 @@ from posixpath import basename, splitext
 # Composers
 # Audiobooks
 
+class Item(QStandardItem):
 
+    def __init__(self, controller, icon=None, text=None):
+        super(Item, self).__init__(icon, text)
+        self.__controller = controller
+        self.__isFetched = False
+
+    @property
+    def isFetched(self):
+        """ Returns whether the node is fetched. """
+        return self.__isFetched
+    
+    @isFetched.setter
+    def isFetched(self, value):
+        self.__isFetched = value
+
+    def fetch(self):
+        """
+        Fetches and returns data.
+        """
+        return self.__controller.fetch(self)
+    
+    def play(self):
+        """ Starts playing at this node. """
+        self.__controller.play(self)
+
+
+class ItemModel(QStandardItemModel):
+    def __init__(self, parent=None):
+        super(ItemModel, self).__init__(parent)
+
+    def canFetchMore(self, parent):
+        
+        """
+        Returns whether a given parent index
+        is ready to fetch.
+        """
+        
+        if not parent.isValid():
+            return False
+    
+        return self.itemFromIndex(parent).isFetched
+
+    def fetchMore(self, parent):
+        
+        """
+        Given an index, populates it with children.
+        """
+        
+        if not parent.isValid():
+            return
+          
+        node = self.itemFromIndex(parent)
+        rows = node.fetch()
+
+class SongsControllerA(object):
+    def __init__(self, client):
+        self.__client = client
+
+    def fetch(self, item):
+        raw = self.client.listallinfo()
+        node = lambda x: Node(SongController(self.client, x))
+        f = lambda x: 'file' in x
+        return map(node, sorted(map(RandomSong, filter(f, raw))))   
+ 
 class Song(dict):
     """ A song. """
     @property
@@ -2425,25 +2489,58 @@ class UI(kdeui.KMainWindow):
         layout.addWidget(splitter)
         
         client0 = Client0()
+        
+        icons = {}
+        icons["audio-x-generic"] = QIcon(KIcon("audio-x-generic"))
+        icons["folder-documents"] = QIcon(KIcon("folder-documents"))
+        icons["server-database"] = QIcon(KIcon("server-database"))
+        icons["drive-harddisk"] = QIcon(KIcon("drive-harddisk"))
+        icons["folder-sound"] = QIcon(KIcon("folder-sound"))
+        icons["media-optical-audio"] = QIcon(KIcon("media-optical-audio"))
+        icons['.ac3'] = QIcon(KIcon('audio-x-ac3'))
+        icons['.flac'] = QIcon(KIcon('audio-x-flac'))
+        icons['.ogg'] = QIcon(KIcon('audio-x-flac+ogg'))
+        icons['.ra'] = QIcon(KIcon('audio-ac3'))
+        icons['.mid'] = QIcon(KIcon('audio-midi'))
+        icons['.wav'] = QIcon(KIcon('audio-x-wav'))
+        
+        libraryModel = QStandardItemModel(self)
+        libraryModel.appendRow(QStandardItem(icons['folder-documents'], 'Playlists'))
+        libraryModel.appendRow(QStandardItem(icons['server-database'], 'Artists'))
+        libraryModel.appendRow(QStandardItem(icons['server-database'], 'Albums'))
+        libraryModel.appendRow(QStandardItem(icons['server-database'], 'Songs'))
+        libraryModel.appendRow(QStandardItem(icons['server-database'], 'Genres'))
+        libraryModel.appendRow(QStandardItem(icons['server-database'], 'Composers'))
+        libraryModel.appendRow(QStandardItem(icons['drive-harddisk'], 'Directories'))
+        libraryModel.setHeaderData(0, Qt.Horizontal, 'Name', Qt.DisplayRole)
+        libraryModel.setHeaderData(1, Qt.Horizontal, 'Track', Qt.DisplayRole)
+        libraryView = TreeView(splitter)
+        libraryView.setModel(libraryModel)
+        
+        playlistModel = QStandardItemModel(self)
+        playlistModel.setHeaderData(0, Qt.Horizontal, 'Name', Qt.DisplayRole)
+        playlistModel.setHeaderData(1, Qt.Horizontal, 'Time', Qt.DisplayRole)
+        playlistView = TreeView(splitter)
+        playlistView.setModel(playlistModel)
 
         
-        treeModel = DatabaseModel(Node(RootController(client0)))
-        treeView = TreeView(splitter)
-        treeView.doubleClicked.connect(treeModel.playAtIndex)
-        treeView.setModel(treeModel)
-        treeModel.rowsInserted.connect(treeView.rowsInserted)
-
-        playlistSplitter = QtGui.QSplitter(splitter)
-        playlistSplitter.setOrientation(QtCore.Qt.Vertical)
-        artLabel = ArtLabel(playlistSplitter)
-        artLabel.setPixmap(QtGui.QPixmap("hamster.jpg"))
-        #playlistView = TreeView(playlistSplitter)
-        playlistView = QTreeView(playlistSplitter)
-        playlistModel = PlaylistModel(Node(NodeController(client0)))
-        playlistModel.rowsInserted.connect(playlistView.rowsInserted)
-        playlistView.setModel(playlistModel)
-        playlistView.doubleClicked.connect(playlistModel.playAtIndex)
-        client0.playlist.connect(playlistModel.updatePlaylist)
+#        treeModel = DatabaseModel(Node(RootController(client0)))
+#        treeView = TreeView(splitter)
+#        treeView.doubleClicked.connect(treeModel.playAtIndex)
+#        treeView.setModel(treeModel)
+#        treeModel.rowsInserted.connect(treeView.rowsInserted)
+#
+#        playlistSplitter = QtGui.QSplitter(splitter)
+#        playlistSplitter.setOrientation(QtCore.Qt.Vertical)
+#        artLabel = ArtLabel(playlistSplitter)
+#        artLabel.setPixmap(QtGui.QPixmap("hamster.jpg"))
+#        #playlistView = TreeView(playlistSplitter)
+#        playlistView = QTreeView(playlistSplitter)
+#        playlistModel = PlaylistModel(Node(NodeController(client0)))
+#        playlistModel.rowsInserted.connect(playlistView.rowsInserted)
+#        playlistView.setModel(playlistModel)
+#        playlistView.doubleClicked.connect(playlistModel.playAtIndex)
+#        client0.playlist.connect(playlistModel.updatePlaylist)
         client0.open("localhost", 6600)
 
     def setConnector(self, connector):
