@@ -118,20 +118,18 @@ class ItemModel(QStandardItemModel):
 class ItemView(QTreeView):
     def __init__(self, parent = None):
         super(ItemView, self).__init__(parent)
-        self.expanded.connect(self.resizeColumnsToContents)
-        self.collapsed.connect(self.resizeColumnsToContents)
         self.setIconSize(QSize(34, 34))
         self.setSelectionMode(self.ExtendedSelection)
         self.setDragEnabled(True)
         
     
-    def resizeColumnsToContents(self, QModelIndex):
+    def resizeColumnsToContents(self):
         self.resizeColumnToContents(0)
         self.resizeColumnToContents(1)
     
     def resizeEvent(self, event):
         super(ItemView, self).resizeEvent(event)
-        self.resizeColumnsToContents(None)
+        self.resizeColumnsToContents()
 
 
 class Song(dict):
