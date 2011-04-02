@@ -60,6 +60,192 @@ icons['.ra'] = QIcon(KIcon('audio-ac3'))
 icons['.mid'] = QIcon(KIcon('audio-midi'))
 icons['.wav'] = QIcon(KIcon('audio-x-wav'))
 
+""" BEGIN NEW CLASSES """
+class Item(object):
+    def __init__(self, controller, parent=None):
+        self.__parentItem = parent
+        self.__childItems = []
+        self.__controller = controller
+
+    def appendRow(self, child):
+        child.parent = self
+        self.__childItems.append(child)
+
+    def child(self, row):
+        try:
+            return self.__childItems[row]
+        except IndexError:
+            return None
+
+    @property
+    def rowCount(self):
+        return len(self.__childItems)
+
+    def data(self, column):
+        try:
+            return self.__controller.data(column)
+        except IndexError:
+            return None
+    
+    @property
+    def row(self):
+        if self.__parentItem:
+            try:
+                return self.__parentItem.__childItems.index(self)
+            except ValueError:
+                return -1
+        return None
+    
+    @property
+    def parent(self):
+        return self.__parentItem
+    
+    @parent.setter
+    def parent(self, value):
+        self.__parentItem = value
+    
+    @property
+    def flags(self):
+        return self.__controller.flags
+    
+    @property
+    def controller(self):
+        return self.__controller
+    
+    @controller.setter
+    def controller(self, value):
+        self.__controller = value
+    
+    def removeRow(self, row):
+        del self.__childItems[row]
+    
+    def removeRows(self, row, count):
+        del self.__childItems[row:row + count]
+        
+class Controller(object):
+    def __init__(self):
+        self.__flags = Qt.NoItemFlags
+
+    def data(self, column):
+        return ''
+    
+    @property
+    def flags(self):
+        return self.__flags
+    
+    @flags.setter
+    def flags(self, value):
+        self.__flags = value
+
+class AController(Controller):
+    def data(self, column):
+        return 'a'
+
+class BController(Controller):
+    def data(self, column):
+        return 'b'
+
+
+class ItemModel(QAbstractItemModel):
+
+    def __init__(self, rootItem, parent=None):
+        super(ItemModel, self).__init__(parent)
+        self.__rootItem = rootItem
+        item = Item(AController())
+        item.appendRow(Item(BController()))
+        self.__rootItem.appendRow(item)
+        self.__headerData = ['0', '1']
+
+    def data(self, index, role=Qt.DisplayRole):
+        if role != Qt.DisplayRole:
+            return None
+        item = self.itemFromIndex(index)
+        if item == self.__rootItem:
+            return None
+        return item.data(index.column()).decode('utf-8')
+
+    def flags(self, index):
+        item = self.itemFromIndex(index)
+        if item != self.__rootItem:
+            return item.flags
+        return Qt.NoItemFlags
+
+    def index(self, row, column, parent=QModelIndex()):
+        if not self.hasIndex(row, column, parent):
+            return QModelIndex()
+        
+        parentItem = self.itemFromIndex(parent)
+        childItem = parentItem.child(row)
+
+        if childItem:
+            return self.createIndex(row, column, childItem)
+        return QModelIndex()
+        
+    def parent(self, index):
+        if not index.isValid():
+            return QModelIndex()
+        
+        childItem = index.internalPointer()
+        parentItem = childItem.parent
+        
+        if parentItem == self.__rootItem:
+            return QModelIndex()
+        
+        return self.createIndex(parentItem.row, 0, parentItem)
+        
+    def rowCount(self, parent=QModelIndex()):
+        if parent.column() > 0:
+            return 0
+
+        parentItem = self.itemFromIndex(parent)
+        return parentItem.rowCount
+
+    def columnCount(self, parent=QModelIndex()):
+        return len(self.__headerData)
+    
+    def itemFromIndex(self, index):
+        if not index.isValid():
+            return self.__rootItem
+        return index.internalPointer()
+    
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        if self.__headerIsValid(section, orientation, role):
+            return self.__headerData[section]
+        return None
+    
+    def setHeaderData(self, section, orientation, value, role=Qt.EditRole):
+        if self.__headerIsValid(section, orientation, role):
+            self.__headerData[section] = value
+            self.headerDataChanged.emit(orientation, section, section)
+            return True
+        return False
+    
+    def __headerIsValid(self, section, orientation, role):
+        if section > len(self.__headerData) - 1:
+            return False
+        if orientation != Qt.Horizontal:
+            return False
+        if role != Qt.DisplayRole:
+            return False
+        return True
+    
+    def set(self):
+        self.__rootItem.child(0).controller = BController()
+        self.dataChanged.emit(self.index(0, 0), self.index(0, 0))
+    
+    def clear(self):
+        self.beginRemoveRows(QModelIndex(), 0, self.__rootItem.rowCount)
+        self.__rootItem.removeRows(0, self.__rootItem.rowCount)
+        self.endRemoveRows()
+    
+    def add(self):
+        self.beginInsertRows(QModelIndex(),
+                             self.__rootItem.rowCount,
+                             self.__rootItem.rowCount)
+        self.__rootItem.appendRow(Item(AController()))
+        self.endInsertRows()
+""" END NEW CLASSES """
+
 
 class Item(QStandardItem):
     def __init__(self, icon, text):
