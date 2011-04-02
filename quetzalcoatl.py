@@ -42,32 +42,47 @@ from posixpath import basename, splitext
 # Composers
 # Audiobooks
 
-class Item(QStandardItem):
 
-    def __init__(self, controller, icon=None, text=None):
-        super(Item, self).__init__(icon, text)
-        self.__controller = controller
+# Icons are looked up by name and by mbid.
+
+
+icons = {}
+icons["audio-x-generic"] = QIcon(KIcon("audio-x-generic"))
+icons["folder-documents"] = QIcon(KIcon("folder-documents"))
+icons["server-database"] = QIcon(KIcon("server-database"))
+icons["drive-harddisk"] = QIcon(KIcon("drive-harddisk"))
+icons["folder-sound"] = QIcon(KIcon("folder-sound"))
+icons["media-optical-audio"] = QIcon(KIcon("media-optical-audio"))
+icons['.ac3'] = QIcon(KIcon('audio-x-ac3'))
+icons['.flac'] = QIcon(KIcon('audio-x-flac'))
+icons['.ogg'] = QIcon(KIcon('audio-x-flac+ogg'))
+icons['.ra'] = QIcon(KIcon('audio-ac3'))
+icons['.mid'] = QIcon(KIcon('audio-midi'))
+icons['.wav'] = QIcon(KIcon('audio-x-wav'))
+
+
+class SongsItem(QStandardItem):
+    
+    def __init__(self, client):
+        super(SongsItem, self).__init__(icons['server-database'], 'Songs')
         self.__isFetched = False
-
+        raw = client.listallinfo()
+        songs = sorted((RandomSong(x) for x in raw if 'file' in x))
+        items = (QStandardItem(icons['audio-x-generic'], x.title) for x in songs)
+        for item in items:
+            self.appendRow(item)
+    
+    def fetch(self):
+        raw = self.client.listallinfo()
+        songs = sorted((RandomSong(x) for x in raw if 'file' in x))
+        items = (Item(self.client, self.icons['audio-x-generic'], x.title) for x in songs)
+        for item in item:
+            self.appendRow(item)
+        self.__isFetched = True
+    
     @property
     def isFetched(self):
-        """ Returns whether the node is fetched. """
         return self.__isFetched
-    
-    @isFetched.setter
-    def isFetched(self, value):
-        self.__isFetched = value
-
-    def fetch(self):
-        """
-        Fetches and returns data.
-        """
-        return self.__controller.fetch(self)
-    
-    def play(self):
-        """ Starts playing at this node. """
-        self.__controller.play(self)
-
 
 class ItemModel(QStandardItemModel):
     def __init__(self, parent=None):
@@ -79,6 +94,8 @@ class ItemModel(QStandardItemModel):
         Returns whether a given parent index
         is ready to fetch.
         """
+        
+        print 'canFetchMore'
         
         if not parent.isValid():
             return False
@@ -97,15 +114,7 @@ class ItemModel(QStandardItemModel):
         node = self.itemFromIndex(parent)
         rows = node.fetch()
 
-class SongsControllerA(object):
-    def __init__(self, client):
-        self.__client = client
 
-    def fetch(self, item):
-        raw = self.client.listallinfo()
-        node = lambda x: Node(SongController(self.client, x))
-        f = lambda x: 'file' in x
-        return map(node, sorted(map(RandomSong, filter(f, raw))))   
  
 class Song(dict):
     """ A song. """
@@ -2504,11 +2513,14 @@ class UI(kdeui.KMainWindow):
         icons['.mid'] = QIcon(KIcon('audio-midi'))
         icons['.wav'] = QIcon(KIcon('audio-x-wav'))
         
+        client0.open("localhost", 6600)
+        
         libraryModel = QStandardItemModel(self)
         libraryModel.appendRow(QStandardItem(icons['folder-documents'], 'Playlists'))
         libraryModel.appendRow(QStandardItem(icons['server-database'], 'Artists'))
         libraryModel.appendRow(QStandardItem(icons['server-database'], 'Albums'))
-        libraryModel.appendRow(QStandardItem(icons['server-database'], 'Songs'))
+        #libraryModel.appendRow(QStandardItem(icons['server-database'], 'Songs'))
+        libraryModel.appendRow(SongsItem(client0))
         libraryModel.appendRow(QStandardItem(icons['server-database'], 'Genres'))
         libraryModel.appendRow(QStandardItem(icons['server-database'], 'Composers'))
         libraryModel.appendRow(QStandardItem(icons['drive-harddisk'], 'Directories'))
@@ -2541,7 +2553,7 @@ class UI(kdeui.KMainWindow):
 #        playlistView.setModel(playlistModel)
 #        playlistView.doubleClicked.connect(playlistModel.playAtIndex)
 #        client0.playlist.connect(playlistModel.updatePlaylist)
-        client0.open("localhost", 6600)
+
 
     def setConnector(self, connector):
         pass
