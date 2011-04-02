@@ -61,61 +61,79 @@ icons['.mid'] = QIcon(KIcon('audio-midi'))
 icons['.wav'] = QIcon(KIcon('audio-x-wav'))
 
 
-class SongsItem(QStandardItem):
+class Item(QStandardItem):
+    def __init__(self, icon, text):
+        super(Item, self).__init__(icon, text)
+        self.setFlags(Qt.ItemIsEnabled)
+        self.isFetched = True
+    
+    def fetch(self):
+        pass
+
+class SongsItem(Item):
     
     def __init__(self, client):
         super(SongsItem, self).__init__(icons['server-database'], 'Songs')
-        self.__isFetched = False
-        raw = client.listallinfo()
-        songs = sorted((RandomSong(x) for x in raw if 'file' in x))
-        items = (QStandardItem(icons['audio-x-generic'], x.title) for x in songs)
-        for item in items:
-            self.appendRow(item)
+        self.client = client
+        self.isFetched = False
+        self.setColumnCount(2)
     
     def fetch(self):
         raw = self.client.listallinfo()
         songs = sorted((RandomSong(x) for x in raw if 'file' in x))
-        items = (Item(self.client, self.icons['audio-x-generic'], x.title) for x in songs)
-        for item in item:
+        items = (QStandardItem(icons['audio-x-generic'], x.title) for x in songs)
+        for item in items:
+            item.setColumnCount(2)
+            item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled)
             self.appendRow(item)
-        self.__isFetched = True
+        self.isFetched = True
     
-    @property
-    def isFetched(self):
-        return self.__isFetched
+    def hasChildren(self):
+        return True
 
 class ItemModel(QStandardItemModel):
     def __init__(self, parent=None):
         super(ItemModel, self).__init__(parent)
-
-    def canFetchMore(self, parent):
-        
-        """
-        Returns whether a given parent index
-        is ready to fetch.
-        """
-        
-        print 'canFetchMore'
-        
-        if not parent.isValid():
-            return False
+        self.setColumnCount(2)
+        self.setSupportedDragActions(Qt.CopyAction | Qt.MoveAction)
     
-        return self.itemFromIndex(parent).isFetched
-
+    def canFetchMore(self, parent=QModelIndex()):
+        item = self.itemFromIndex(parent)
+        if item:
+            return not item.isFetched
+        return False
+    
     def fetchMore(self, parent):
-        
-        """
-        Given an index, populates it with children.
-        """
-        
-        if not parent.isValid():
-            return
-          
-        node = self.itemFromIndex(parent)
-        rows = node.fetch()
+        item = self.itemFromIndex(parent)
+        if item and not item.isFetched:
+            item.fetch()
+    
+    def hasChildren(self, parent=QModelIndex()):
+        item = self.itemFromIndex(parent)
+        if item:
+            return item.hasChildren()
+        return True
 
 
- 
+class ItemView(QTreeView):
+    def __init__(self, parent = None):
+        super(ItemView, self).__init__(parent)
+        self.expanded.connect(self.resizeColumnsToContents)
+        self.collapsed.connect(self.resizeColumnsToContents)
+        self.setIconSize(QSize(34, 34))
+        self.setSelectionMode(self.ExtendedSelection)
+        self.setDragEnabled(True)
+        
+    
+    def resizeColumnsToContents(self, QModelIndex):
+        self.resizeColumnToContents(0)
+        self.resizeColumnToContents(1)
+    
+    def resizeEvent(self, event):
+        super(ItemView, self).resizeEvent(event)
+        self.resizeColumnsToContents(None)
+
+
 class Song(dict):
     """ A song. """
     @property
@@ -2515,21 +2533,20 @@ class UI(kdeui.KMainWindow):
         
         client0.open("localhost", 6600)
         
-        libraryModel = QStandardItemModel(self)
-        libraryModel.appendRow(QStandardItem(icons['folder-documents'], 'Playlists'))
-        libraryModel.appendRow(QStandardItem(icons['server-database'], 'Artists'))
-        libraryModel.appendRow(QStandardItem(icons['server-database'], 'Albums'))
-        #libraryModel.appendRow(QStandardItem(icons['server-database'], 'Songs'))
+        libraryModel = ItemModel(self)
+        libraryModel.appendRow(Item(icons['folder-documents'], 'Playlists'))
+        libraryModel.appendRow(Item(icons['server-database'], 'Artists'))
+        libraryModel.appendRow(Item(icons['server-database'], 'Albums'))
         libraryModel.appendRow(SongsItem(client0))
-        libraryModel.appendRow(QStandardItem(icons['server-database'], 'Genres'))
-        libraryModel.appendRow(QStandardItem(icons['server-database'], 'Composers'))
-        libraryModel.appendRow(QStandardItem(icons['drive-harddisk'], 'Directories'))
+        libraryModel.appendRow(Item(icons['server-database'], 'Genres'))
+        libraryModel.appendRow(Item(icons['server-database'], 'Composers'))
+        libraryModel.appendRow(Item(icons['drive-harddisk'], 'Directories'))
         libraryModel.setHeaderData(0, Qt.Horizontal, 'Name', Qt.DisplayRole)
         libraryModel.setHeaderData(1, Qt.Horizontal, 'Track', Qt.DisplayRole)
-        libraryView = TreeView(splitter)
+        libraryView = ItemView(splitter)
         libraryView.setModel(libraryModel)
         
-        playlistModel = QStandardItemModel(self)
+        playlistModel = ItemModel(self)
         playlistModel.setHeaderData(0, Qt.Horizontal, 'Name', Qt.DisplayRole)
         playlistModel.setHeaderData(1, Qt.Horizontal, 'Time', Qt.DisplayRole)
         playlistView = TreeView(splitter)
