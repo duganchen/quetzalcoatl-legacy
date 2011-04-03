@@ -65,7 +65,6 @@ class Item(object):
     def __init__(self, parent=None):
         self.__parentItem = parent
         self.__childItems = []
-        self.__controller = controller
         self.__canFetchMore = True
         self.__icon = None
         self.__hasChildren = False
@@ -107,14 +106,6 @@ class Item(object):
     def parent(self, value):
         self.__parentItem = value
     
-    @property
-    def controller(self):
-        return self.__controller
-    
-    @controller.setter
-    def controller(self, value):
-        self.__controller = value
-    
     def removeRow(self, row):
         del self.__childItems[row]
     
@@ -133,7 +124,7 @@ class Item(object):
     def canFetchMore(self):
         return self.__canFetchMore
     
-    @isFetched.setter
+    @canFetchMore.setter
     def canFetchMore(self, value):
         self.__canFetchMore = value
     
@@ -241,6 +232,20 @@ class ItemModel(QAbstractItemModel):
         if role != Qt.DisplayRole:
             return False
         return True
+    
+    def canFetchMore(self, parent):
+        parentItem = self.itemFromIndex(parent)
+        return parentItem.canFetchMore
+    
+    def fetchMore(self, parent):
+        parentItem = self.itemFromIndex(parent)
+        parentItem.canFetchMore()
+    
+    def hasChildren(self, parent=QModelIndex()):
+        parentItem = self.itemFromIndex(parent)
+        return parentItem.hasChildren
+        
+        
 
 """ END NEW CLASSES """
 
