@@ -62,10 +62,15 @@ icons['.wav'] = QIcon(KIcon('audio-x-wav'))
 
 """ BEGIN NEW CLASSES """
 class Item(object):
-    def __init__(self, controller, parent=None):
+    def __init__(self, parent=None):
         self.__parentItem = parent
         self.__childItems = []
         self.__controller = controller
+        self.__canFetchMore = True
+        self.__icon = None
+        self.__hasChildren = False
+        self.__data = []
+        self.__flags = Qt.NoItemFlags
 
     def appendRow(self, child):
         child.parent = self
@@ -80,12 +85,10 @@ class Item(object):
     @property
     def rowCount(self):
         return len(self.__childItems)
-
-    def data(self, column):
-        try:
-            return self.__controller.data(column)
-        except IndexError:
-            return None
+    
+    @property
+    def data(self):
+        return self.__data
     
     @property
     def row(self):
@@ -105,10 +108,6 @@ class Item(object):
         self.__parentItem = value
     
     @property
-    def flags(self):
-        return self.__controller.flags
-    
-    @property
     def controller(self):
         return self.__controller
     
@@ -121,13 +120,30 @@ class Item(object):
     
     def removeRows(self, row, count):
         del self.__childItems[row:row + count]
-        
-class Controller(object):
-    def __init__(self):
-        self.__flags = Qt.NoItemFlags
-
-    def data(self, column):
-        return ''
+    
+    @property
+    def icon(self):
+        return self.__icon
+    
+    @icon.setter
+    def icon(self, value):
+        self.__icon = value
+    
+    @property
+    def canFetchMore(self):
+        return self.__canFetchMore
+    
+    @isFetched.setter
+    def canFetchMore(self, value):
+        self.__canFetchMore = value
+    
+    @property
+    def hasChildren(self):
+        return self.__hasChildren
+    
+    @hasChildren.setter
+    def hasChildren(self, value):
+        self.__hasChildren = value
     
     @property
     def flags(self):
@@ -136,33 +152,30 @@ class Controller(object):
     @flags.setter
     def flags(self, value):
         self.__flags = value
-
-class AController(Controller):
-    def data(self, column):
-        return 'a'
-
-class BController(Controller):
-    def data(self, column):
-        return 'b'
-
+    
+    def fetchMore(self):
+        pass
 
 class ItemModel(QAbstractItemModel):
 
     def __init__(self, rootItem, parent=None):
         super(ItemModel, self).__init__(parent)
         self.__rootItem = rootItem
-        item = Item(AController())
-        item.appendRow(Item(BController()))
-        self.__rootItem.appendRow(item)
         self.__headerData = ['0', '1']
 
     def data(self, index, role=Qt.DisplayRole):
-        if role != Qt.DisplayRole:
-            return None
+
         item = self.itemFromIndex(index)
         if item == self.__rootItem:
             return None
-        return item.data(index.column()).decode('utf-8')
+        
+        if role == Qt.DecorationRole:
+            return item.icon
+        try:
+            return item.data[index.column()].decode('utf-8')
+        except IndexError:
+            pass
+        return None
 
     def flags(self, index):
         item = self.itemFromIndex(index)
@@ -228,22 +241,7 @@ class ItemModel(QAbstractItemModel):
         if role != Qt.DisplayRole:
             return False
         return True
-    
-    def set(self):
-        self.__rootItem.child(0).controller = BController()
-        self.dataChanged.emit(self.index(0, 0), self.index(0, 0))
-    
-    def clear(self):
-        self.beginRemoveRows(QModelIndex(), 0, self.__rootItem.rowCount)
-        self.__rootItem.removeRows(0, self.__rootItem.rowCount)
-        self.endRemoveRows()
-    
-    def add(self):
-        self.beginInsertRows(QModelIndex(),
-                             self.__rootItem.rowCount,
-                             self.__rootItem.rowCount)
-        self.__rootItem.appendRow(Item(AController()))
-        self.endInsertRows()
+
 """ END NEW CLASSES """
 
 
@@ -647,7 +645,7 @@ class Node(list):
         self.__icon = None
         self.__controller = controller
         self.__song = None
-        self.__isFetched = False
+        self.__canFetchMore = False
     
     def __setitem__(self, key, value):
         value.__parent = self
@@ -719,11 +717,11 @@ class Node(list):
     @property
     def isFetched(self):
         """ Returns whether the node is fetched. """
-        return self.__isFetched
+        return self.__canFetchMore
     
     @isFetched.setter
     def isFetched(self, value):
-        self.__isFetched = value
+        self.__canFetchMore = value
     
     def fetch(self):
         """
