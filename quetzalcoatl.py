@@ -77,7 +77,6 @@ class Song(dict):
         return self.title.lower()
 
 
-
 class Item(object):
     """ A model item. """
 
@@ -91,8 +90,8 @@ class Item(object):
         self.__canFetchMore = False
         self.__icon = None
         self.__hasChildren = False
-        self.__data = ['', '']
         self.__flags = Qt.NoItemFlags
+        self.__columnData = {}
 
     def appendRow(self, child):
         """ Adds a child item. """
@@ -114,13 +113,14 @@ class Item(object):
         """ Returns the number of children. """
         return len(self.__childItems)
     
-    @property
-    def data(self):
+    def data(self, index, role=Qt.DisplayRole):
         """
-        Returns the display data in the format of a list:
-        one list item per column.
+        Returns data for the item's display role..
+        
+        Default implementation returns nothing.
         """
-        return self.__data
+        
+        return None
     
     @property
     def row(self):
@@ -213,6 +213,21 @@ class Item(object):
         """
         return []
 
+class AllSongsItem(Item):
+    """
+    The navigation node for all songs.
+    """
+    
+    def __init__(self):
+        super(AllSongsItem, self).__init__()
+        self.flags = Qt.ItemIsEnabled
+        self.icon = QIcon(KIcon("server-database"))
+    
+    def data(self, index):
+        
+        if index.column() == 0:
+            return 'Songs'
+
 class ItemModel(QAbstractItemModel):
     
     """ The Quetzalcoatl item model. """
@@ -221,22 +236,22 @@ class ItemModel(QAbstractItemModel):
         """ Initializes the model with default values. """
         
         super(ItemModel, self).__init__(parent)
+        
         self.__rootItem = rootItem
+        self.__rootItem.hasChildren = True
         self.__headerData = ['0', '1']
 
     def data(self, index, role=Qt.DisplayRole):
         """ reimplementation """
-
-        item = self.itemFromIndex(index)
-        if item == self.__rootItem:
-            return None
         
-        if role == Qt.DecorationRole:
+        item = self.itemFromIndex(index)
+        
+        if role == Qt.DecorationRole and index.column() == 0:
             return item.icon
-        try:
-            return item.data[index.column()].decode('utf-8')
-        except IndexError:
-            pass
+        
+        if role == Qt.DisplayRole:
+            return item.data(index)
+        
         return None
 
     def flags(self, index):
@@ -278,12 +293,13 @@ class ItemModel(QAbstractItemModel):
         
         """ reimplementation """
         
+        
         if parent.column() > 0:
             return 0
 
         parentItem = self.itemFromIndex(parent)
         return parentItem.rowCount
-
+        
     def columnCount(self, parent=QModelIndex()):
         
         """ reimplementation """
@@ -330,12 +346,14 @@ class ItemModel(QAbstractItemModel):
     def canFetchMore(self, parent):
         """ reimplementation """
         
+        
         parentItem = self.itemFromIndex(parent)
         return parentItem.canFetchMore
     
     def fetchMore(self, parent):
         
         """ reimplementation """
+        
         
         parentItem = self.itemFromIndex(parent)
         rows = parentItem.fetchMore()
@@ -350,7 +368,7 @@ class ItemModel(QAbstractItemModel):
     
     def hasChildren(self, parent=QModelIndex()):
         """ reimplementation """
-        
+          
         parentItem = self.itemFromIndex(parent)
         return parentItem.hasChildren
         
@@ -917,7 +935,11 @@ class UI(kdeui.KMainWindow):
         
         client.open("localhost", 6600)
         
-        libraryModel = ItemModel(Item())
+        root = Item()
+        root.appendRow(AllSongsItem())
+        root.hasChildren = True     
+        libraryModel = ItemModel(root)
+
 #        libraryModel.appendRow(Item(icons['folder-documents'], 'Playlists'))
 #        libraryModel.appendRow(Item(icons['server-database'], 'Artists'))
 #        libraryModel.appendRow(Item(icons['server-database'], 'Albums'))
@@ -930,11 +952,11 @@ class UI(kdeui.KMainWindow):
         libraryView = ItemView(splitter)
         libraryView.setModel(libraryModel)
         
-        playlistModel = ItemModel(Item())
-        playlistModel.setHeaderData(0, Qt.Horizontal, 'Name', Qt.DisplayRole)
-        playlistModel.setHeaderData(1, Qt.Horizontal, 'Time', Qt.DisplayRole)
-        playlistView = ItemView(splitter)
-        playlistView.setModel(playlistModel)
+#        playlistModel = ItemModel(Item())
+#        playlistModel.setHeaderData(0, Qt.Horizontal, 'Name', Qt.DisplayRole)
+#        playlistModel.setHeaderData(1, Qt.Horizontal, 'Time', Qt.DisplayRole)
+#        playlistView = ItemView(splitter)
+#        playlistView.setModel(playlistModel)
 
 if __name__ == "__main__":
 
