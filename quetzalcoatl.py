@@ -60,7 +60,14 @@ icons['.ra'] = QIcon(KIcon('audio-ac3'))
 icons['.mid'] = QIcon(KIcon('audio-midi'))
 icons['.wav'] = QIcon(KIcon('audio-x-wav'))
 
+def songTitle(song):
+    if 'title' in song:
+        return song["title"]
+    return splitext(basename(song["file"]))[0]
 
+def randomSongKey(song):
+    return songTitle(song).lower()
+   
 class Song(dict):
     """ A song. """
     @property
@@ -211,7 +218,35 @@ class Item(object):
         Does not modify the item.
         Default implementation just returns an empty list.
         """
+
         return []
+
+#    def fetch(self):
+#        raw = self.client.listallinfo()
+#        songs = sorted((RandomSong(x) for x in raw if 'file' in x))
+#        items = (QStandardItem(icons['audio-x-generic'], x.title) for x in songs)
+#        for item in items:
+#            item.setColumnCount(2)
+#            item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled)
+#            self.appendRow(item)
+#        self.isFetched = True
+
+
+        return []
+
+class RandomSongItem(Item):
+    def __init__(self, song):
+        super(RandomSongItem, self).__init__()
+        self.flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
+        self.icon = icons['audio-x-generic']
+        self.hasChildren = False
+        self.canFetchMore = False
+        self.__song = song
+    
+    def data(self, index):
+        if index.column() == 0:
+            return songTitle(self.__song).decode('utf-8')
+        return None
 
 class AllSongsItem(Item):
     """
@@ -221,12 +256,25 @@ class AllSongsItem(Item):
     def __init__(self):
         super(AllSongsItem, self).__init__()
         self.flags = Qt.ItemIsEnabled
-        self.icon = QIcon(KIcon("server-database"))
+        self.icon = icons['server-database']
+        self.hasChildren = True
+        self.canFetchMore = True
+
+        # Will refactor htis for dependency injection.
+        self.client = Client()
+        self.client.open('localhost', 6600)
+        
     
     def data(self, index):
         
         if index.column() == 0:
             return 'Songs'
+
+        return None
+
+    def fetchMore(self):
+        songs = (x for x in self.client.listallinfo() if 'file' in x)
+        return [RandomSongItem(x) for x in sorted(songs, key=randomSongKey)]
 
 class ItemModel(QAbstractItemModel):
     
@@ -346,7 +394,6 @@ class ItemModel(QAbstractItemModel):
     def canFetchMore(self, parent):
         """ reimplementation """
         
-        
         parentItem = self.itemFromIndex(parent)
         return parentItem.canFetchMore
     
@@ -357,7 +404,7 @@ class ItemModel(QAbstractItemModel):
         
         parentItem = self.itemFromIndex(parent)
         rows = parentItem.fetchMore()
-        if len(rows == 0):
+        if len(rows) == 0:
             return
         self.beginInsertRows(parent, parentItem.rowCount,
                              parentItem.rowCount + len(rows))
@@ -389,6 +436,9 @@ class ItemView(QTreeView):
         
         self.setSelectionMode(self.ExtendedSelection)
         self.setDragEnabled(True)
+
+        self.expanded.connect(self.resizeColumnsToContents)
+        self.collapsed.connect(self.resizeColumnsToContents)
         
     def resizeColumnsToContents(self):
         """
@@ -918,21 +968,6 @@ class UI(kdeui.KMainWindow):
         layout.addWidget(splitter)
         
         client = Client()
-        
-        icons = {}
-        icons["audio-x-generic"] = QIcon(KIcon("audio-x-generic"))
-        icons["folder-documents"] = QIcon(KIcon("folder-documents"))
-        icons["server-database"] = QIcon(KIcon("server-database"))
-        icons["drive-harddisk"] = QIcon(KIcon("drive-harddisk"))
-        icons["folder-sound"] = QIcon(KIcon("folder-sound"))
-        icons["media-optical-audio"] = QIcon(KIcon("media-optical-audio"))
-        icons['.ac3'] = QIcon(KIcon('audio-x-ac3'))
-        icons['.flac'] = QIcon(KIcon('audio-x-flac'))
-        icons['.ogg'] = QIcon(KIcon('audio-x-flac+ogg'))
-        icons['.ra'] = QIcon(KIcon('audio-ac3'))
-        icons['.mid'] = QIcon(KIcon('audio-midi'))
-        icons['.wav'] = QIcon(KIcon('audio-x-wav'))
-        
         client.open("localhost", 6600)
         
         root = Item()
