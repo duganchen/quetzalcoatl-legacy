@@ -409,6 +409,9 @@ class ItemModel(QAbstractItemModel):
         parent = self.itemFromIndex(parent_index)
         return parent.has_children
         
+    def handleDoubleClick(index):
+        print "doubleClicked"
+
 class ItemView(QTreeView):
     
     """ A Quetzalcoatl item view """
@@ -742,7 +745,9 @@ class UI(kdeui.KMainWindow):
         root.has_children = True
         item_view = ItemView()
         splitter.addWidget(item_view)
-        item_view.setModel(ItemModel(root))
+        item_model = ItemModel(root)
+        item_view.setModel()
+        item_view.doubleClicked.connect(item_model.handleDoubleClick)
 
 if __name__ == "__main__":
 
