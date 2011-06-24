@@ -18,15 +18,10 @@ setapi("QString", 2)
 setapi("QUrl", 2)
 
 from sys import argv, exit, maxint
-from types import ListType
-from PyQt4 import QtCore, QtGui
 from PyQt4.QtCore import QAbstractItemModel, QObject
-from mpd import MPDClient, MPDError
 from PyKDE4 import kdecore, kdeui
-from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
-from PyQt4.QtGui import QIcon, QStandardItem, QStandardItemModel, QTreeView
+from PyQt4.QtCore import QIcon, QSize, Qt, QModelIndex, QTimer, pyqtSignal
 from PyKDE4.kdeui import KIcon
-import socket
 from posixpath import basename, splitext
 
 # The root menu of my iPod video 5.5G is:
