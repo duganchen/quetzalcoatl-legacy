@@ -20,9 +20,12 @@ setapi("QUrl", 2)
 from sys import argv, exit, maxint
 from PyQt4.QtCore import QAbstractItemModel, QObject
 from PyKDE4 import kdecore, kdeui
-from PyQt4.QtCore import QIcon, QSize, Qt, QModelIndex, QTimer, pyqtSignal
+from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
 from PyKDE4.kdeui import KIcon
+from PyQt4.QtGui import QIcon, QTreeView, QMainWindow, QVBoxLayout, QWidget
+from PyQt4.QtGui import QSplitter
 from posixpath import basename, splitext
+from mpd import MPDClient
 
 # The root menu of my iPod video 5.5G is:
 # Playlists
@@ -53,34 +56,7 @@ icons['.mid'] = QIcon(KIcon('audio-midi'))
 icons['.wav'] = QIcon(KIcon('audio-x-wav'))
 
 
-def title(song):
-    if 'title' in song:
-        return song["title"]
-    return splitext(basename(song["file"]))[0]
 
-def random_key(song):
-    return title(song).lower()
-
-def album_key(song):
-    """
-    Returns the sorting key for the song. In the context of its album.
-    """
-    return song['track'] if 'track' in song else songTitle(song).lower()
-
-def time_str(second_count):
-    """
-    Given an integer number of seconds, returns a formatted string
-    representation.
-    """
-    seconds = second_count % 60
-    minutes = second_count % 3600 / 60
-    hours = second_count / 3600
-    
-    if hours == 0 and minutes == 0:
-        return '0:{0:02}'.format(seconds)
-    if hours == 0:
-        return '{0:02}:{1:02}'.format(minutes, seconds)
-    return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
     
 class Item(object):
     """ A model item. """
@@ -219,6 +195,39 @@ class Item(object):
 
         return []
 
+    @classmethod
+    def title(cls, song):
+        if 'title' in song:
+            return song["title"]
+        return splitext(basename(song["file"]))[0]
+
+    @classmethod
+    def random_key(cls, song):
+        return cls.title(song).lower()
+
+    @classmethod
+    def album_key(cls, song):
+        """
+        Returns the sorting key for the song. In the context of its album.
+        """
+        return song['track'] if 'track' in song else cls.title(song).lower()
+
+    @classmethod
+    def time_str(cls, second_count):
+        """
+        Given an integer number of seconds, returns a formatted string
+        representation.
+        """
+        seconds = second_count % 60
+        minutes = second_count % 3600 / 60
+        hours = second_count / 3600
+        
+        if hours == 0 and minutes == 0:
+            return '0:{0:02}'.format(seconds)
+        if hours == 0:
+            return '{0:02}:{1:02}'.format(minutes, seconds)
+        return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
+
 class RandomItem(Item):
     """
     For songs not sorted by album.
@@ -233,7 +242,7 @@ class RandomItem(Item):
     
     def data(self, index):
         if index.column() == 0:
-            return title(self.__song).decode('utf-8')
+            return self.title(self.__song).decode('utf-8')
         return None
 
 class AllSongsItem(Item):
@@ -257,7 +266,7 @@ class AllSongsItem(Item):
 
     def fetch_more(self):
         songs = (x for x in self.__client.listallinfo() if 'file' in x)
-        return [RandomItem(x) for x in sorted(songs, key=random_key)]
+        return [RandomItem(x) for x in sorted(songs, key=self.random_key)]
 
 class ItemModel(QAbstractItemModel):
     
@@ -715,15 +724,15 @@ class Client(QObject):
 class UI(kdeui.KMainWindow):
 
     def __init__(self, client):
-        QtGui.QMainWindow.__init__(self)
+        QMainWindow.__init__(self)
         self.setWindowIcon(kdeui.KIcon("multimedia-player"))
         self.resize(800, 600)
         self.setWindowTitle('Quetzalcoatl')
-        centralWidget = QtGui.QWidget(self)
+        centralWidget = QWidget(self)
         self.setCentralWidget(centralWidget)
-        layout = QtGui.QVBoxLayout()
+        layout = QVBoxLayout()
         centralWidget.setLayout(layout)
-        splitter = QtGui.QSplitter()
+        splitter = QSplitter()
         layout.addWidget(splitter)
         client = Client()
         client.open("localhost", 6600)
