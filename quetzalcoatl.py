@@ -38,28 +38,22 @@ from mpd import MPDClient
 # Composers
 # Audiobooks
 
-
-# Icons are looked up by name and by mbid.
-
-icons = {}
-icons["audio-x-generic"] = QIcon(KIcon("audio-x-generic"))
-icons["folder-documents"] = QIcon(KIcon("folder-documents"))
-icons["server-database"] = QIcon(KIcon("server-database"))
-icons["drive-harddisk"] = QIcon(KIcon("drive-harddisk"))
-icons["folder-sound"] = QIcon(KIcon("folder-sound"))
-icons["media-optical-audio"] = QIcon(KIcon("media-optical-audio"))
-icons['.ac3'] = QIcon(KIcon('audio-x-ac3'))
-icons['.flac'] = QIcon(KIcon('audio-x-flac'))
-icons['.ogg'] = QIcon(KIcon('audio-x-flac+ogg'))
-icons['.ra'] = QIcon(KIcon('audio-ac3'))
-icons['.mid'] = QIcon(KIcon('audio-midi'))
-icons['.wav'] = QIcon(KIcon('audio-x-wav'))
-
-
-
-    
 class Item(object):
     """ A model item. """
+
+    icons = {}
+    icons["audio-x-generic"] = QIcon(KIcon("audio-x-generic"))
+    icons["folder-documents"] = QIcon(KIcon("folder-documents"))
+    icons["server-database"] = QIcon(KIcon("server-database"))
+    icons["drive-harddisk"] = QIcon(KIcon("drive-harddisk"))
+    icons["folder-sound"] = QIcon(KIcon("folder-sound"))
+    icons["media-optical-audio"] = QIcon(KIcon("media-optical-audio"))
+    icons['.ac3'] = QIcon(KIcon('audio-x-ac3'))
+    icons['.flac'] = QIcon(KIcon('audio-x-flac'))
+    icons['.ogg'] = QIcon(KIcon('audio-x-flac+ogg'))
+    icons['.ra'] = QIcon(KIcon('audio-ac3'))
+    icons['.mid'] = QIcon(KIcon('audio-midi'))
+    icons['.wav'] = QIcon(KIcon('audio-x-wav'))
 
     def __init__(self, parent=None):
         """
@@ -228,6 +222,12 @@ class Item(object):
             return '{0:02}:{1:02}'.format(minutes, seconds)
         return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
 
+    def handle_double_click(self):
+        """
+        Handles double clicks. Default implementation is a no-op.
+        """
+        pass
+
 class RandomItem(Item):
     """
     For songs not sorted by album.
@@ -235,7 +235,7 @@ class RandomItem(Item):
     def __init__(self, song):
         super(RandomItem, self).__init__()
         self.flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
-        self.icon = icons['audio-x-generic']
+        self.icon = self.icons['audio-x-generic']
         self.has_children = False
         self.can_fetch_more = False
         self.__song = song
@@ -245,6 +245,12 @@ class RandomItem(Item):
             return self.title(self.__song).decode('utf-8')
         return None
 
+    def handle_double_click(self):
+        """
+        Reimplementation
+        """
+        print self.__song['file']
+
 class AllSongsItem(Item):
     """
     The navigation node for all songs.
@@ -253,7 +259,7 @@ class AllSongsItem(Item):
     def __init__(self, client):
         super(AllSongsItem, self).__init__()
         self.flags = Qt.ItemIsEnabled
-        self.icon = icons['server-database']
+        self.icon = self.icons['server-database']
         self.has_children = True
         self.can_fetch_more = True
         self.__client = client
@@ -409,8 +415,13 @@ class ItemModel(QAbstractItemModel):
         parent = self.itemFromIndex(parent_index)
         return parent.has_children
         
-    def handleDoubleClick(index):
-        print "doubleClicked"
+    def handle_double_click(self, index):
+        """
+        Handles double clicks.
+
+        Defers to the item under the cursor.
+        """
+        self.itemFromIndex(index).handle_double_click()
 
 class ItemView(QTreeView):
     
@@ -746,8 +757,9 @@ class UI(kdeui.KMainWindow):
         item_view = ItemView()
         splitter.addWidget(item_view)
         item_model = ItemModel(root)
-        item_view.setModel()
-        item_view.doubleClicked.connect(item_model.handleDoubleClick)
+        item_view.setModel(item_model)
+        item_view.doubleClicked.connect(item_model.handle_double_click)
+        item_view.setHeaderHidden(True)
 
 if __name__ == "__main__":
 
