@@ -17,7 +17,7 @@ setapi("QVariant", 2)
 setapi("QString", 2)
 setapi("QUrl", 2)
 
-from sys import argv, exit, maxint
+from sys import argv, exit
 from PyQt4.QtCore import QAbstractItemModel, QObject
 from PyKDE4 import kdecore, kdeui
 from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
@@ -25,7 +25,8 @@ from PyKDE4.kdeui import KIcon
 from PyQt4.QtGui import QIcon, QTreeView, QMainWindow, QVBoxLayout, QWidget
 from PyQt4.QtGui import QSplitter
 from posixpath import basename, splitext
-from mpd import MPDClient
+from mpd import MPDClient, MPDError
+from socket import error
 
 # The root menu of my iPod video 5.5G is:
 # Playlists
@@ -222,7 +223,7 @@ class Item(object):
             return '{0:02}:{1:02}'.format(minutes, seconds)
         return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
 
-    def handle_double_click(self):
+    def launch(self):
         """
         Handles double clicks. Default implementation is a no-op.
         """
@@ -245,7 +246,7 @@ class RandomItem(Item):
             return self.title(self.__song).decode('utf-8')
         return None
 
-    def handle_double_click(self):
+    def launch(self):
         """
         Reimplementation
         """
@@ -415,13 +416,13 @@ class ItemModel(QAbstractItemModel):
         parent = self.itemFromIndex(parent_index)
         return parent.has_children
         
-    def handle_double_click(self, index):
+    def launch(self, index):
         """
         Handles double clicks.
 
         Defers to the item under the cursor.
         """
-        self.itemFromIndex(index).handle_double_click()
+        self.itemFromIndex(index).launch()
 
 class ItemView(QTreeView):
     
@@ -529,11 +530,7 @@ class SanitizedClient(object):
         """
         lsinfo() and status() can both return a playlist key.
         """
-        try:
-            splitext(value)
-            return value
-        except:
-            return int(value)
+        return int(value)
 
     @classmethod
     def __sanitize_tag(cls, value):
@@ -605,135 +602,135 @@ class SanitizedClient(object):
     def __getattr__(self, attr):
         attribute = getattr(self.__client, attr)
         if hasattr(attribute, "__call__"):
-            return lambda * args: self.__command(attribute, *args)
+            return lambda *args: self.__command(attribute, *args)
         return attribute
 
 class Client(QObject):
     """
-    The client wrapper class.
+    Encapsulates instantiating the clients.
     """
 
+    is_connected_changed = pyqtSignal(bool)
     playlist = pyqtSignal(list, int)
-    repeat = pyqtSignal(bool)
-    consume = pyqtSignal(bool)
-    random = pyqtSignal(bool)
-    state = pyqtSignal(str)
-    xfade = pyqtSignal(int)
-    single = pyqtSignal(bool)
-    error = pyqtSignal(str)
-    isConnected = pyqtSignal(bool)
-    time = pyqtSignal(int, int)
-    songid = pyqtSignal(int)
-    
-    def __init__(self, parent=None):
-        """
-        Initializes the Client.
-        """
 
+    def __init__(self, parent=None):
         super(Client, self).__init__(parent)
+        self.__is_connected = False
         self.__poller = None
-        self.__timer = QTimer(self)
-        self.__timer.setInterval(1000)
-        self.__timer.timeout.connect(self.poll)
-        self.__status = {}
+
+    def open(self, host, port):
+        if self.__poller is None:
+            client = MPDClient()
+            try:
+                client.connect(host, port)
+                self.__poller = SanitizedClient(client)
+                self.is_connected = True
+            except Exception as e:
+                self.is_connected = False
+
+    def close(self):
+        if self.__poller is not None:
+            try:
+                self.__poller.disconnect()
+            except:
+                pass
+            self.__poller = None
 
     def __getattr__(self, attr):
         """
         Allows access to the client's methods.
-        
-        Do not use it to call the client's connect() and
-        disconnect() methods.
+
+        Assumes that the there is a connection.
         """
 
         attribute = getattr(self.__poller, attr)
-        if not hasattr(attribute, "__call__"):
-            return attribute
-        return lambda * args: self.__wrapper(attribute, *args)
-    
+        if hasattr(attribute, "__call__"):
+            return lambda *args: self.__wrapper(attribute, *args)
+        return attribute
+
     def __wrapper(self, method, *args):
-        """
-        Executes a poller method, and handles exceptions.
-        """
-        return method(*args)
+        try:
+            return method(*args)
+        except Exception as e:
+            print str(e)
+            self.is_connected = False
+
+    @property
+    def is_connected(self):
+        return self.__is_connected
+
+    @is_connected.setter
+    def is_connected(self, value):
+        if value != self.__is_connected:
+            self.is_connected_changed.emit(value)
+        self.__is_connected = value
+
+class Poller(QObject):
+
+    """
+    The class that polls for updates.
+    """
+
+    playlist_changed = pyqtSignal(list, int)
+    repeat_changed = pyqtSignal(bool)
+    random_changed = pyqtSignal(bool)
+    state_changed = pyqtSignal(str)
+
+    def __init__(self, client, parent=None):
+        super(Poller, self).__init__(parent)
+        self.__client = client
+
+        self.__status = {}
+        self.set_is_connected(False)
     
-    def open(self, host, port):
+    def set_is_connected(self, is_connected):
         """
-        Connects to the client.
+        Responds to the client changing connection state.
         """
-        self.__poller = SanitizedClient(MPDClient())
-        self.__poller.connect(host, port)
-        self.__status.clear()
-        #self.__timer.start()
-        self.isConnected.emit(True)
-    
-    def close(self):
-        """
-        Closes the connection.
-        """
-        self.__poller.disconnect()
-        self.__poller = None
-        self.isConnected.emit(False)
-    
+        if not is_connected:
+            self.status = {}
+
+            self.status['playlist'] = 0
+            self.playlist.emit([], 0)
+
+            self.status['repeat'] = False 
+            self.repeat_changed.emit(False)
+
+            self.status['random'] = False
+            self.random_changed.emit(False)
+
+            self.status['state'] = 'stop'
+            self.state_changed.emit('stop')
+
     def poll(self):
-        """ Polls the server. """
-        status = self.__poller.status()
 
-        if self.__updated(status, 'playlist'):
-            version = maxint - 1
-            if 'playlist' in self.__status:
-                version = self.__status['playlist']
-            playlist = map(lambda x: PlaylistSong(x), self.plchanges(version))
-            playlist.sort()
-            self.playlist.emit(playlist, status['playlistlength'])
-            self.__status['playlist'] = status['playlist']
-        
-        if self.__updated(status, 'repeat'):
-            self.__status['repeat'] = status['repeat']
-            self.repeat.emit(status['repeat'])
-
-        if self.__updated(status, 'consume'):
-            self.__status['consume'] = status['consume']
-            self.consume.emit(status['consume'])
-
-        if self.__updated(status, 'random'):
-            self.__status['random'] = status['random']
-            self.random.emit(status['random'])
-
-        if self.__updated(status, 'state'):
-            self.__status['state'] = status['state']
-            self.state.emit(status['state'])
-        
-        if self.__updated(status, 'xfade'):
-            self.__status['xfade'] = status['xfade']
-            self.random.emit(status['xfade'])
-        
-        if self.__updated(status, 'single'):
-            self.__status['single'] = status['single']
-            self.xfade.emit(status['xfade'])
-        
-        if self.__updated(status, 'time'):
-            self.__status['time'] = status['time']
-            elapsed, total = status['time']
-            self.time.emit(elapsed, total)
-        
-        if self.__updated(status, 'songid'):
-            self.__status['songid'] = status['songid']
-            self.songid.emit(status['songid'])
-    
-    def __updated(self, status, key):
         """
-        Determines whether to emit a signal.
-        """
-        
-        if key not in status:
-            return False
+        Polls for updates.
 
-        if key not in self.__status:
-            return True
-        if status[key] != self.__status[key]:
-            return True
-        
-        return False
+        Connects and disconnects if necessary.
+        """
+
+        if not self.__client.is_connected:
+            self.__client.open('localhost', 6600)
+
+        status = self.__client.status()
+
+        if self.client.is_connected:
+            if status['playlist'] != self.__status['playlist']:
+                playlist = self.__poller.playlistinfo()
+                version = status['playlist']
+                self.playlist.emit(playlist, version)
+                self.__status['playlist'] = status['playlist']
+        if self.client.is_connected:
+            if status['repeat'] != self.status['repeat']:
+                self.repeat_changed.emit(status['repeat'])
+                self.__status['repeat'] = status['repeat']
+            if status['random'] != self.status['random']:
+                self.random_changed.emit(status['random'])
+                self.__status['random'] = status['random']
+            if status['state'] != self.status['state']:
+                self.random_changed.emit(status['state'])
+                self.__status['state'] = status['state']
 
 class UI(kdeui.KMainWindow):
 
@@ -758,7 +755,7 @@ class UI(kdeui.KMainWindow):
         splitter.addWidget(item_view)
         item_model = ItemModel(root)
         item_view.setModel(item_model)
-        item_view.doubleClicked.connect(item_model.handle_double_click)
+        item_view.doubleClicked.connect(item_model.launch)
         item_view.setHeaderHidden(True)
 
 if __name__ == "__main__":
