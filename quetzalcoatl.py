@@ -238,15 +238,18 @@ class ItemModel(QAbstractItemModel):
         """ reimplementation """
         
         parent = self.itemFromIndex(parent_index)
-        rows = parent.fetch_more()
-        if len(rows) == 0:
-            return
-        self.beginInsertRows(parent_index, parent.row_count,
-                             parent.row_count + len(rows))
-        for row in rows:
-            parent.append_row(row)
-        self.endInsertRows()
-        parent.can_fetch_more = False
+        try:
+            rows = parent.fetch_more()
+            if len(rows) == 0:
+                return
+            self.beginInsertRows(parent_index, parent.row_count,
+                                 parent.row_count + len(rows))
+            for row in rows:
+                parent.append_row(row)
+            self.endInsertRows()
+            parent.can_fetch_more = False
+        except Exception as e:
+            print str(e)
     
     def hasChildren(self, parent_index=QModelIndex()):
         """ reimplementation """
@@ -531,7 +534,8 @@ class Poller(QObject):
 
         try:
             self.__handle_status(self.__client.status())
-        except:
+        except Exception as e:
+            print str(e)
             self.__reset()
 
     def __handle_status(self, status):
@@ -604,7 +608,6 @@ class Client(QObject):
                 self.__poller = SanitizedClient(client)
                 self.is_connected_changed.emit(True)
             except Exception as e:
-                print str(e)
                 self.__poller = None
                 raise e
 
@@ -638,7 +641,6 @@ class Client(QObject):
             return method(*args)
         except Exception as e:
             self.is_connected_changed.emit(False)
-            print str(e)
             self.__poller = None
             raise e
 
