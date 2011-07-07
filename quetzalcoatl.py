@@ -238,19 +238,22 @@ class ItemModel(QAbstractItemModel):
         """ reimplementation """
         
         parent = self.itemFromIndex(parent_index)
+
         try:
             rows = parent.fetch_more()
-            if len(rows) == 0:
-                return
-            self.beginInsertRows(parent_index, parent.row_count,
-                                 parent.row_count + len(rows))
-            for row in rows:
-                parent.append_row(row)
-            self.endInsertRows()
-            parent.can_fetch_more = False
         except Exception as e:
             print str(e)
-    
+            return
+
+        if len(rows) == 0:
+            return
+        self.beginInsertRows(parent_index, parent.row_count,
+                             parent.row_count + len(rows))
+        for row in rows:
+            parent.append_row(row)
+        self.endInsertRows()
+        parent.can_fetch_more = False
+            
     def hasChildren(self, parent_index=QModelIndex()):
         """ reimplementation """
           
