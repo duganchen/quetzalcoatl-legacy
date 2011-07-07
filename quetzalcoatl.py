@@ -1,11 +1,4 @@
 #!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-
-# I'm aware of an inefficiency: expanding a node for the first time
-# and causing a fetch will cause the view's columns to be resized to the
-# contents twice.
-
-# track should be changed. It doubles as length.
 
 from sip import setapi
 
@@ -38,6 +31,237 @@ from socket import error
 # Genres
 # Composers
 # Audiobooks
+
+
+def main():
+    appName = "Quetzalcoatl"
+    catalog = ""
+    programName = kdecore.ki18n("Quetzalcoatl")
+    version = "1.0"
+    description = kdecore.ki18n("mpd client")
+    license = kdecore.KAboutData.License_GPL
+    copyright = kdecore.ki18n("(c) 2009 Dugan Chen")
+    text = kdecore.ki18n("none")
+    homePage = "www.duganchen.ca"
+    bugEmail = "see homepage"
+    aboutData = kdecore.KAboutData(appName, catalog, programName, version, \
+    description, license, copyright, text, homePage, bugEmail)
+
+    kdecore.KCmdLineArgs.init(argv, aboutData)
+    app = kdeui.KApplication()
+    main = UI(None)
+    main.show()
+    exit(app.exec_())
+
+class UI(kdeui.KMainWindow):
+
+    def __init__(self, client):
+        QMainWindow.__init__(self)
+        self.setWindowIcon(kdeui.KIcon("multimedia-player"))
+        self.resize(800, 600)
+        self.setWindowTitle('Quetzalcoatl')
+        centralWidget = QWidget(self)
+        self.setCentralWidget(centralWidget)
+        layout = QVBoxLayout()
+        centralWidget.setLayout(layout)
+        splitter = QSplitter()
+        layout.addWidget(splitter)
+        client = Client({'host': 'localhost', 'port': 6600})
+        root = Item()
+        root.append_row(AllSongsItem(client))
+        root.append_row(AllSongsItem(client))
+        root.has_children = True
+        item_view = ItemView()
+        splitter.addWidget(item_view)
+        item_model = ItemModel(root)
+        item_view.setModel(item_model)
+        item_view.doubleClicked.connect(item_model.launch)
+        item_view.setHeaderHidden(True)
+
+class ItemView(QTreeView):
+    
+    """ A Quetzalcoatl item view """
+    
+    def __init__(self, parent=None):
+        """
+        Initializes to default values.
+        """
+        
+        super(ItemView, self).__init__(parent)
+        
+        # The icon size chosen accomodates both
+        # last.fm icons and Oxygen icons.
+        self.setIconSize(QSize(34, 34))
+        
+        self.setSelectionMode(self.ExtendedSelection)
+        self.setDragEnabled(True)
+
+        self.expanded.connect(self.resizeColumnsToContents)
+        self.collapsed.connect(self.resizeColumnsToContents)
+        
+    def resizeColumnsToContents(self):
+        """
+        Resizes columns to match their contents.
+        """
+        if self.model():
+            for i in xrange(self.model().columnCount()):
+                self.resizeColumnToContents(i) 
+    
+    def resizeEvent(self, event):
+        """ On resize, auto-sizes all columns. """
+        super(ItemView, self).resizeEvent(event)
+        self.resizeColumnsToContents()
+
+
+class ItemModel(QAbstractItemModel):
+    
+    """ The Quetzalcoatl item model. """
+
+    def __init__(self, root, parent_index=None):
+        """ Initializes the model with default values. """
+        
+        super(ItemModel, self).__init__(parent_index)
+        
+        self.__root = root
+        self.__root.has_children = True
+        self.__headers = ['0', '1']
+
+    def data(self, index, role=Qt.DisplayRole):
+        """ reimplementation """
+        
+        item = self.itemFromIndex(index)
+        
+        if role == Qt.DecorationRole and index.column() == 0:
+            return item.icon
+        
+        if role == Qt.DisplayRole:
+            return item.data(index)
+        
+        return None
+
+    def flags(self, index):
+        """ reimplementation """
+        
+        item = self.itemFromIndex(index)
+        if item != self.__root:
+            return item.flags
+        return Qt.NoItemFlags
+
+    def index(self, row, column, parent_index=QModelIndex()):
+        """ reimplementation """
+        
+        if not self.hasIndex(row, column, parent_index):
+            return QModelIndex()
+        
+        parent = self.itemFromIndex(parent_index)
+        child = parent.child(row)
+
+        if child:
+            return self.createIndex(row, column, child)
+        return QModelIndex()
+        
+    def parent(self, index):
+        """ reimplementation """
+        
+        if not index.isValid():
+            return QModelIndex()
+        
+        child = index.internalPointer()
+        parent = child.parent
+        
+        if parent == self.__root:
+            return QModelIndex()
+        
+        return self.createIndex(parent.row, 0, parent)
+        
+    def rowCount(self, parent_index=QModelIndex()):
+        
+        """ reimplementation """
+        
+        if parent_index.column() > 0:
+            return 0
+
+        parent = self.itemFromIndex(parent_index)
+        return parent.row_count
+        
+    def columnCount(self, parent_index=QModelIndex()):
+        
+        """ reimplementation """
+        
+        return len(self.__headers)
+    
+    def itemFromIndex(self, index):
+        """ Returns the item at the specified index. """
+        if not index.isValid():
+            return self.__root
+        return index.internalPointer()
+    
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        
+        """ reimplementation """
+        
+        if self.__header_is_valid(section, orientation, role):
+            return self.__headers[section]
+        return None
+    
+    def setHeaderData(self, section, orientation, value, role=Qt.EditRole):
+        """ reimplementation """
+        if self.__header_is_valid(section, orientation, role):
+            self.__headers[section] = value
+            self.headerDataChanged.emit(orientation, section, section)
+            return True
+        return False
+    
+    def __header_is_valid(self, section, orientation, role):
+        
+        """
+        Returns whether the parameters refer to a
+        valid header.
+        """
+        
+        if section > len(self.__headers) - 1:
+            return False
+        if orientation != Qt.Horizontal:
+            return False
+        if role != Qt.DisplayRole:
+            return False
+        return True
+    
+    def canFetchMore(self, parent_index):
+        """ reimplementation """
+        
+        parent = self.itemFromIndex(parent_index)
+        return parent.can_fetch_more
+    
+    def fetchMore(self, parent_index):
+        
+        """ reimplementation """
+        
+        parent = self.itemFromIndex(parent_index)
+        rows = parent.fetch_more()
+        if len(rows) == 0:
+            return
+        self.beginInsertRows(parent_index, parent.row_count,
+                             parent.row_count + len(rows))
+        for row in rows:
+            parent.append_row(row)
+        self.endInsertRows()
+        parent.can_fetch_more = False
+    
+    def hasChildren(self, parent_index=QModelIndex()):
+        """ reimplementation """
+          
+        parent = self.itemFromIndex(parent_index)
+        return parent.has_children
+        
+    def launch(self, index):
+        """
+        Handles double clicks.
+
+        Defers to the item under the cursor.
+        """
+        self.itemFromIndex(index).launch()
+
 
 class Item(object):
     """ A model item. """
@@ -275,188 +499,148 @@ class AllSongsItem(Item):
         songs = (x for x in self.__client.listallinfo() if 'file' in x)
         return [RandomItem(x) for x in sorted(songs, key=self.random_key)]
 
-class ItemModel(QAbstractItemModel):
-    
-    """ The Quetzalcoatl item model. """
+class Poller(QObject):
 
-    def __init__(self, root, parent_index=None):
-        """ Initializes the model with default values. """
-        
-        super(ItemModel, self).__init__(parent_index)
-        
-        self.__root = root
-        self.__root.has_children = True
-        self.__headers = ['0', '1']
+    """
+    The class that polls for updates.
+    """
 
-    def data(self, index, role=Qt.DisplayRole):
-        """ reimplementation """
-        
-        item = self.itemFromIndex(index)
-        
-        if role == Qt.DecorationRole and index.column() == 0:
-            return item.icon
-        
-        if role == Qt.DisplayRole:
-            return item.data(index)
-        
-        return None
+    playlist_changed = pyqtSignal(list, int)
+    repeat_changed = pyqtSignal(bool)
+    random_changed = pyqtSignal(bool)
+    state_changed = pyqtSignal(str)
+    time_changed = pyqtSignal(int)
+    song_id_exists_changed = pyqtSignal(int)
+    song_id_changed = pyqtSignal(int)
 
-    def flags(self, index):
-        """ reimplementation """
-        
-        item = self.itemFromIndex(index)
-        if item != self.__root:
-            return item.flags
-        return Qt.NoItemFlags
+    def __init__(self, client, parent=None):
+        super(Poller, self).__init__(parent)
+        self.__client = client
+        self.__client.is_connected_changed.connect(self.__set_is_connected)
 
-    def index(self, row, column, parent_index=QModelIndex()):
-        """ reimplementation """
-        
-        if not self.hasIndex(row, column, parent_index):
-            return QModelIndex()
-        
-        parent = self.itemFromIndex(parent_index)
-        child = parent.child(row)
+        self.__status = {}
+        self.__set_is_connected(False)
 
-        if child:
-            return self.createIndex(row, column, child)
-        return QModelIndex()
-        
-    def parent(self, index):
-        """ reimplementation """
-        
-        if not index.isValid():
-            return QModelIndex()
-        
-        child = index.internalPointer()
-        parent = child.parent
-        
-        if parent == self.__root:
-            return QModelIndex()
-        
-        return self.createIndex(parent.row, 0, parent)
-        
-    def rowCount(self, parent_index=QModelIndex()):
-        
-        """ reimplementation """
-        
-        if parent_index.column() > 0:
-            return 0
+    def poll(self):
 
-        parent = self.itemFromIndex(parent_index)
-        return parent.row_count
-        
-    def columnCount(self, parent_index=QModelIndex()):
-        
-        """ reimplementation """
-        
-        return len(self.__headers)
-    
-    def itemFromIndex(self, index):
-        """ Returns the item at the specified index. """
-        if not index.isValid():
-            return self.__root
-        return index.internalPointer()
-    
-    def headerData(self, section, orientation, role=Qt.DisplayRole):
-        
-        """ reimplementation """
-        
-        if self.__header_is_valid(section, orientation, role):
-            return self.__headers[section]
-        return None
-    
-    def setHeaderData(self, section, orientation, value, role=Qt.EditRole):
-        """ reimplementation """
-        if self.__header_is_valid(section, orientation, role):
-            self.__headers[section] = value
-            self.headerDataChanged.emit(orientation, section, section)
-            return True
-        return False
-    
-    def __header_is_valid(self, section, orientation, role):
-        
         """
-        Returns whether the parameters refer to a
-        valid header.
-        """
-        
-        if section > len(self.__headers) - 1:
-            return False
-        if orientation != Qt.Horizontal:
-            return False
-        if role != Qt.DisplayRole:
-            return False
-        return True
-    
-    def canFetchMore(self, parent_index):
-        """ reimplementation """
-        
-        parent = self.itemFromIndex(parent_index)
-        return parent.can_fetch_more
-    
-    def fetchMore(self, parent_index):
-        
-        """ reimplementation """
-        
-        parent = self.itemFromIndex(parent_index)
-        rows = parent.fetch_more()
-        if len(rows) == 0:
-            return
-        self.beginInsertRows(parent_index, parent.row_count,
-                             parent.row_count + len(rows))
-        for row in rows:
-            parent.append_row(row)
-        self.endInsertRows()
-        parent.can_fetch_more = False
-    
-    def hasChildren(self, parent_index=QModelIndex()):
-        """ reimplementation """
-          
-        parent = self.itemFromIndex(parent_index)
-        return parent.has_children
-        
-    def launch(self, index):
-        """
-        Handles double clicks.
+        Polls for updates.
 
-        Defers to the item under the cursor.
+        Connects and disconnects if necessary.
         """
-        self.itemFromIndex(index).launch()
 
-class ItemView(QTreeView):
-    
-    """ A Quetzalcoatl item view """
-    
-    def __init__(self, parent=None):
-        """
-        Initializes to default values.
-        """
-        
-        super(ItemView, self).__init__(parent)
-        
-        # The icon size chosen accomodates both
-        # last.fm icons and Oxygen icons.
-        self.setIconSize(QSize(34, 34))
-        
-        self.setSelectionMode(self.ExtendedSelection)
-        self.setDragEnabled(True)
+        try:
+            self.__handle_status(self.__client.status())
+        except:
+            self.__reset()
 
-        self.expanded.connect(self.resizeColumnsToContents)
-        self.collapsed.connect(self.resizeColumnsToContents)
-        
-    def resizeColumnsToContents(self):
+    def __handle_status(self, status):
+
+        if self.__is_changed(status, 'repeat'):
+            self.repeat.emit(status['repeat'])
+
+        if self.__is_changed(status, 'random'):
+            self.repeat.emit(status['random'])
+
+        if self.__is_changed(status, 'state'):
+            self.repeat.emit(status['state'])
+
+        # There is no else. If there is no time, the state is STOP.
+        if self.__is_changed(status['time']) and 'time' in status:
+            self.time.emit(status['time'])
+            
+        if self.__is_changed(status['songid']):
+            self.song_id_exists_changed.emit('songid' in status)
+            if 'songid' in status:
+                self.song_id_changed.emit(songid['status'])
+
+        if self.__is_changed(status, 'playlist'):
+            # Exceptions thrown here propagate and are handled by poll()
+            self.playlist.emit(self.__client.playlistinfo(),
+                    status['playlistlength'])
+
+        self.__status = status
+
+    def __set_is_connected(self, is_connected):
         """
-        Resizes columns to match their contents.
+        Responds to the client changing connection state.
         """
-        if self.model():
-            for i in xrange(self.model().columnCount()):
-                self.resizeColumnToContents(i) 
-    
-    def resizeEvent(self, event):
-        """ On resize, auto-sizes all columns. """
-        super(ItemView, self).resizeEvent(event)
-        self.resizeColumnsToContents()
+
+        if is_connected == True:
+            self.poll()
+        else:
+            self.reset()
+
+    def __is_changed(self, new_status, key):
+        return not key in self.__status or not key in new_status or not self.__status[key] == new_status[key]
+
+
+    def __reset(self):
+        self.__status = {}
+        self.repeat_changed.emit(False)
+        self.random_changed.emit(False)
+        self.state_changed.emit('STOP')
+        self.song_id_exists_changed.emit(False)
+
+
+class Client(QObject):
+    """
+    Encapsulates instantiating the clients.
+    """
+
+    is_connected_changed = pyqtSignal(bool)
+
+    def __init__(self, options, parent=None):
+        super(Client, self).__init__(parent)
+        self.__options = options
+        self.__poller = None
+
+    def open(self):
+
+        if self.__poller is None:
+            client = MPDClient()
+            try:
+                client.connect(self.__options['host'], self.__options['port'])
+                self.__poller = SanitizedClient(client)
+                self.is_connected_changed.emit(True)
+            except Exception as e:
+                print str(e)
+                self.__poller = None
+                raise e
+
+    def close(self):
+        if self.__poller is not None:
+            try:
+                self.__poller.disconnect()
+            except:
+                pass
+            self.__poller = None
+            self.is_connected_changed.emit(False)
+
+    def __getattr__(self, attr):
+        """
+        Allows access to the client's methods.
+
+        Just throws exceptions on error.
+        """
+
+        if self.__poller is None:
+            self.open()
+            # Any exceptions raised here will have propagated.
+
+        attribute = getattr(self.__poller, attr)
+        if hasattr(attribute, "__call__"):
+            return lambda *args: self.__wrapper(attribute, *args)
+        return attribute
+
+    def __wrapper(self, method, *args):
+        try:
+            return method(*args)
+        except Exception as e:
+            self.is_connected_changed.emit(False)
+            print str(e)
+            self.__poller = None
+            raise e
 
 class SanitizedClient(object):
 
@@ -605,176 +789,22 @@ class SanitizedClient(object):
             return lambda *args: self.__command(attribute, *args)
         return attribute
 
-class Client(QObject):
-    """
-    Encapsulates instantiating the clients.
-    """
+class Options(object):
 
-    is_connected_changed = pyqtSignal(bool)
-    playlist = pyqtSignal(list, int)
+    # Future versions will use KDE's data store
+    def __init__(self):
+        self.__data = {}
 
-    def __init__(self, parent=None):
-        super(Client, self).__init__(parent)
-        self.__is_connected = False
-        self.__poller = None
+    def __getitem__(self, key):
+        return self.__data[key]
 
-    def open(self, host, port):
-        if self.__poller is None:
-            client = MPDClient()
-            try:
-                client.connect(host, port)
-                self.__poller = SanitizedClient(client)
-                self.is_connected = True
-            except Exception as e:
-                self.is_connected = False
+    def __setitem__(self, key, value):
+        self.__data[key] = value
 
-    def close(self):
-        if self.__poller is not None:
-            try:
-                self.__poller.disconnect()
-            except:
-                pass
-            self.__poller = None
-
-    def __getattr__(self, attr):
-        """
-        Allows access to the client's methods.
-
-        Assumes that the there is a connection.
-        """
-
-        attribute = getattr(self.__poller, attr)
-        if hasattr(attribute, "__call__"):
-            return lambda *args: self.__wrapper(attribute, *args)
-        return attribute
-
-    def __wrapper(self, method, *args):
-        try:
-            return method(*args)
-        except Exception as e:
-            print str(e)
-            self.is_connected = False
-
-    @property
-    def is_connected(self):
-        return self.__is_connected
-
-    @is_connected.setter
-    def is_connected(self, value):
-        if value != self.__is_connected:
-            self.is_connected_changed.emit(value)
-        self.__is_connected = value
-
-class Poller(QObject):
-
-    """
-    The class that polls for updates.
-    """
-
-    playlist_changed = pyqtSignal(list, int)
-    repeat_changed = pyqtSignal(bool)
-    random_changed = pyqtSignal(bool)
-    state_changed = pyqtSignal(str)
-
-    def __init__(self, client, parent=None):
-        super(Poller, self).__init__(parent)
-        self.__client = client
-
-        self.__status = {}
-        self.set_is_connected(False)
-    
-    def set_is_connected(self, is_connected):
-        """
-        Responds to the client changing connection state.
-        """
-        if not is_connected:
-            self.status = {}
-
-            self.status['playlist'] = 0
-            self.playlist.emit([], 0)
-
-            self.status['repeat'] = False 
-            self.repeat_changed.emit(False)
-
-            self.status['random'] = False
-            self.random_changed.emit(False)
-
-            self.status['state'] = 'stop'
-            self.state_changed.emit('stop')
-
-    def poll(self):
-
-        """
-        Polls for updates.
-
-        Connects and disconnects if necessary.
-        """
-
-        if not self.__client.is_connected:
-            self.__client.open('localhost', 6600)
-
-        status = self.__client.status()
-
-        if self.client.is_connected:
-            if status['playlist'] != self.__status['playlist']:
-                playlist = self.__poller.playlistinfo()
-                version = status['playlist']
-                self.playlist.emit(playlist, version)
-                self.__status['playlist'] = status['playlist']
-        if self.client.is_connected:
-            if status['repeat'] != self.status['repeat']:
-                self.repeat_changed.emit(status['repeat'])
-                self.__status['repeat'] = status['repeat']
-            if status['random'] != self.status['random']:
-                self.random_changed.emit(status['random'])
-                self.__status['random'] = status['random']
-            if status['state'] != self.status['state']:
-                self.random_changed.emit(status['state'])
-                self.__status['state'] = status['state']
-
-class UI(kdeui.KMainWindow):
-
-    def __init__(self, client):
-        QMainWindow.__init__(self)
-        self.setWindowIcon(kdeui.KIcon("multimedia-player"))
-        self.resize(800, 600)
-        self.setWindowTitle('Quetzalcoatl')
-        centralWidget = QWidget(self)
-        self.setCentralWidget(centralWidget)
-        layout = QVBoxLayout()
-        centralWidget.setLayout(layout)
-        splitter = QSplitter()
-        layout.addWidget(splitter)
-        client = Client()
-        client.open("localhost", 6600)
-        root = Item()
-        root.append_row(AllSongsItem(client))
-        root.append_row(AllSongsItem(client))
-        root.has_children = True
-        item_view = ItemView()
-        splitter.addWidget(item_view)
-        item_model = ItemModel(root)
-        item_view.setModel(item_model)
-        item_view.doubleClicked.connect(item_model.launch)
-        item_view.setHeaderHidden(True)
 
 if __name__ == "__main__":
+    main()
 
-    appName = "Quetzalcoatl"
-    catalog = ""
-    programName = kdecore.ki18n("Quetzalcoatl")
-    version = "1.0"
-    description = kdecore.ki18n("mpd client")
-    license = kdecore.KAboutData.License_GPL
-    copyright = kdecore.ki18n("(c) 2009 Dugan Chen")
-    text = kdecore.ki18n("none")
-    homePage = "www.duganchen.ca"
-    bugEmail = "see homepage"
-    aboutData = kdecore.KAboutData(appName, catalog, programName, version, \
-    description, license, copyright, text, homePage, bugEmail)
 
-    kdecore.KCmdLineArgs.init(argv, aboutData)
-    app = kdeui.KApplication()
-    main = UI(None)
-    main.show()
-    exit(app.exec_())
+
+
