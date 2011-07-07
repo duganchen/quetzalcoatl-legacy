@@ -16,7 +16,7 @@ launches the Python 2 interpreter. If you're system is not compliant, then you
 can make it compliant by creating a symlink. For example, you can make
 Slackware 13.37 compliant with the following two commands:
 
-> cd /usr/bin ; ln -s python2.6 python
+> cd /usr/bin ; ln -s python2.6 python2
 
 * [Homepage](http://duganchen.ca/project/software-development/quetzalcoatl-mpd-client)
 * [Project Page](https://github.com/duganchen/quetzalcoatl/)
