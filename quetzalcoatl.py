@@ -68,15 +68,20 @@ class UI(kdeui.KMainWindow):
         layout.addWidget(splitter)
         client = Client({'host': 'localhost', 'port': 6600})
         root = Item()
-        root.append_row(AllSongsItem(client))
-        root.append_row(AllSongsItem(client))
+        root.append_row(AllSongsItem())
+        root.append_row(AllSongsItem())
         root.has_children = True
-        item_view = ItemView()
-        splitter.addWidget(item_view)
-        item_model = ItemModel(root)
-        item_view.setModel(item_model)
-        item_view.doubleClicked.connect(item_model.launch)
-        item_view.setHeaderHidden(True)
+        database_view = ItemView()
+        splitter.addWidget(database_view)
+        database_model = ItemModel(client, root)
+        database_view.setModel(database_model)
+        database_view.doubleClicked.connect(database_model.handleDoubleClick)
+        database_view.setHeaderHidden(True)
+        playlist_view = ItemView()
+        splitter.addWidget(playlist_view)
+        self.poller = Poller(client)
+        database_model.status_changed.connect(self.poller.poll)
+
 
 class ItemView(QTreeView):
     
@@ -117,7 +122,9 @@ class ItemModel(QAbstractItemModel):
     
     """ The Quetzalcoatl item model. """
 
-    def __init__(self, root, parent_index=None):
+    status_changed = pyqtSignal()
+    
+    def __init__(self, client, root, parent_index=None):
         """ Initializes the model with default values. """
         
         super(ItemModel, self).__init__(parent_index)
@@ -125,6 +132,7 @@ class ItemModel(QAbstractItemModel):
         self.__root = root
         self.__root.has_children = True
         self.__headers = ['0', '1']
+        self.__client = client
 
     def data(self, index, role=Qt.DisplayRole):
         """ reimplementation """
@@ -240,7 +248,7 @@ class ItemModel(QAbstractItemModel):
         parent = self.itemFromIndex(parent_index)
 
         try:
-            rows = parent.fetch_more()
+            rows = parent.fetch_more(self.__client)
         except Exception as e:
             print str(e)
             return
@@ -260,14 +268,20 @@ class ItemModel(QAbstractItemModel):
         parent = self.itemFromIndex(parent_index)
         return parent.has_children
         
-    def launch(self, index):
+    def handleDoubleClick(self, index):
         """
         Handles double clicks.
 
         Defers to the item under the cursor.
         """
-        self.itemFromIndex(index).launch()
+        self.itemFromIndex(index).handleDoubleClick(self.__client,
+                self.change_status)
 
+    def change_status(self):
+
+        """ signals that we need to poll for updates. """
+
+        self.status_changed.emit()
 
 class Item(object):
     """ A model item. """
@@ -285,6 +299,7 @@ class Item(object):
     icons['.ra'] = QIcon(KIcon('audio-ac3'))
     icons['.mid'] = QIcon(KIcon('audio-midi'))
     icons['.wav'] = QIcon(KIcon('audio-x-wav'))
+
 
     def __init__(self, parent=None):
         """
@@ -411,7 +426,7 @@ class Item(object):
         """ Sets the items's flags. """
         self.__flags = value
     
-    def fetch_more(self):
+    def fetch_more(self, client):
         """
         Fetches and returns a list of child items.
         Does not modify the item.
@@ -419,6 +434,13 @@ class Item(object):
         """
 
         return []
+
+    def handleDoubleClick(self, client, updateFuc):
+        """
+        Handles double clicks.
+        """
+
+        pass
 
     @classmethod
     def title(cls, song):
@@ -453,12 +475,6 @@ class Item(object):
             return '{0:02}:{1:02}'.format(minutes, seconds)
         return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
 
-    def launch(self):
-        """
-        Handles double clicks. Default implementation is a no-op.
-        """
-        pass
-
 class RandomItem(Item):
     """
     For songs not sorted by album.
@@ -476,24 +492,28 @@ class RandomItem(Item):
             return self.title(self.__song).decode('utf-8')
         return None
 
-    def launch(self):
+    def handleDoubleClick(self, client, updateFunc):
         """
         Reimplementation
         """
-        print self.__song['file']
+
+        try:
+            client.playid(client.addid(self.__song['file']))
+            updateFunc()
+        except Exception as e:
+            print str(e)
 
 class AllSongsItem(Item):
     """
     The navigation node for all songs.
     """
     
-    def __init__(self, client):
+    def __init__(self):
         super(AllSongsItem, self).__init__()
         self.flags = Qt.ItemIsEnabled
         self.icon = self.icons['server-database']
         self.has_children = True
         self.can_fetch_more = True
-        self.__client = client
     
     def data(self, index):
         if index.column() == 0:
@@ -501,8 +521,8 @@ class AllSongsItem(Item):
 
         return None
 
-    def fetch_more(self):
-        songs = (x for x in self.__client.listallinfo() if 'file' in x)
+    def fetch_more(self, client):
+        songs = (x for x in client.listallinfo() if 'file' in x)
         return [RandomItem(x) for x in sorted(songs, key=self.random_key)]
 
 class Poller(QObject):
@@ -539,31 +559,30 @@ class Poller(QObject):
             self.__handle_status(self.__client.status())
         except Exception as e:
             print str(e)
-            self.__reset()
 
     def __handle_status(self, status):
 
         if self.__is_changed(status, 'repeat'):
-            self.repeat.emit(status['repeat'])
+            self.repeat_changed.emit(status['repeat'])
 
         if self.__is_changed(status, 'random'):
-            self.repeat.emit(status['random'])
+            self.random_changed.emit(status['random'])
 
         if self.__is_changed(status, 'state'):
-            self.repeat.emit(status['state'])
+            self.state_changed.emit(status['state'])
 
         # There is no else. If there is no time, the state is STOP.
-        if self.__is_changed(status['time']) and 'time' in status:
-            self.time.emit(status['time'])
+        if self.__is_changed(status, 'time') and 'time' in status:
+            self.time_changed.emit(status['time'])
             
-        if self.__is_changed(status['songid']):
+        if self.__is_changed(status, 'songid'):
             self.song_id_exists_changed.emit('songid' in status)
             if 'songid' in status:
-                self.song_id_changed.emit(songid['status'])
+                self.song_id_changed.emit(status['songid'])
 
         if self.__is_changed(status, 'playlist'):
             # Exceptions thrown here propagate and are handled by poll()
-            self.playlist.emit(self.__client.playlistinfo(),
+            self.playlist_changed.emit(self.__client.playlistinfo(),
                     status['playlistlength'])
 
         self.__status = status
@@ -576,7 +595,7 @@ class Poller(QObject):
         if is_connected == True:
             self.poll()
         else:
-            self.reset()
+            self.__reset()
 
     def __is_changed(self, new_status, key):
         return not key in self.__status or not key in new_status or not self.__status[key] == new_status[key]
@@ -643,6 +662,10 @@ class Client(QObject):
         try:
             return method(*args)
         except Exception as e:
+
+            # If there's an exception, the signal is emitted.
+            # Then the signal is raised. In that order.
+
             self.is_connected_changed.emit(False)
             self.__poller = None
             raise e
