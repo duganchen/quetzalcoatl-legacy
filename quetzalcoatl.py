@@ -79,8 +79,13 @@ class UI(kdeui.KMainWindow):
         database_view.setHeaderHidden(True)
         playlist_view = ItemView()
         splitter.addWidget(playlist_view)
+
+        # Connecting signals doesn't keep it from being released.
         self.poller = Poller(client)
         database_model.status_changed.connect(self.poller.poll)
+        playlist_model = PlaylistModel(client, Item())
+        playlist_view.setModel(playlist_model)
+        self.poller.playlist_changed.connect(playlist_model.set_playlist)
 
 
 class ItemView(QTreeView):
@@ -124,10 +129,10 @@ class ItemModel(QAbstractItemModel):
 
     status_changed = pyqtSignal()
     
-    def __init__(self, client, root, parent_index=None):
+    def __init__(self, client, root, parent=None):
         """ Initializes the model with default values. """
         
-        super(ItemModel, self).__init__(parent_index)
+        super(ItemModel, self).__init__(parent)
         
         self.__root = root
         self.__root.has_children = True
@@ -282,6 +287,29 @@ class ItemModel(QAbstractItemModel):
         """ signals that we need to poll for updates. """
 
         self.status_changed.emit()
+
+    def append_row(self, item):
+        """
+        Appends an item to the root.
+        """
+
+        self.__root.append_row(item)
+
+    def remove_rows(self, row, count):
+        """
+        Removes count rows from the root, starting at row.
+        """
+        self.__root.remove_rows(row, count)
+
+class PlaylistModel(ItemModel):
+    def __init__(self, client, root, parent_index=None):
+        super(PlaylistModel, self).__init__(client, root, parent_index)
+
+    def set_playlist(self, playlist, length):
+        self.beginInsertRows(QModelIndex(), 0, length - 1)
+        for song in playlist:
+            self.append_row(PlaylistItem(song))
+        self.endInsertRows()
 
 class Item(object):
     """ A model item. """
@@ -525,6 +553,20 @@ class AllSongsItem(Item):
         songs = (x for x in client.listallinfo() if 'file' in x)
         return [RandomItem(x) for x in sorted(songs, key=self.random_key)]
 
+class PlaylistItem(Item):
+    """
+    A song in the playlist.
+    """
+    def __init__(self, song):
+        super(PlaylistItem, self).__init__()
+        self.__song = song
+
+    def data(self, index):
+        if index.column() == 0:
+            return self.title(self.__song)
+        return None
+
+
 class Poller(QObject):
 
     """
@@ -582,8 +624,8 @@ class Poller(QObject):
 
         if self.__is_changed(status, 'playlist'):
             # Exceptions thrown here propagate and are handled by poll()
-            self.playlist_changed.emit(self.__client.playlistinfo(),
-                    status['playlistlength'])
+            self.playlist_changed.emit(sorted(self.__client.playlistinfo(),
+                key=lambda x: x['pos']), status['playlistlength'])
 
         self.__status = status
 
