@@ -335,17 +335,17 @@ class PlaylistModel(ItemModel):
                 self.append_row(PlaylistItem(song))
    
     def dropMimeData(self, data, action, row, column, parent):
-        print data
+        print str(e)
         return True
 
     def flags(self, index):
         if index.isValid():
             flags = self.itemFromIndex(index).flags
-            if index.column() > 0:
-                flags &= ~Qt.ItemIsDraggable
+            if index.column() > 1:
+                flags &= ~Qt.ItemIsDragEnabled
             return flags
         else:
-            return Qt.ItemIsDroppable
+            return Qt.ItemIsDropEnabled
 
 class Item(object):
     """ A model item. """
