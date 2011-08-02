@@ -539,9 +539,6 @@ class Item(object):
             return '{0:02}:{1:02}'.format(minutes, seconds)
         return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
 
-    def create_child(raw_data):
-        return Item(raw_data)
-
 class RandomItem(Item):
     """
     For songs not sorted by album.
@@ -590,9 +587,6 @@ class AllSongsItem(Item):
     def fetch_more(self, client):
         songs = (x for x in client.listallinfo() if 'file' in x)
         return [RandomItem(x) for x in sorted(songs, key=self.random_key)]
-
-    def create_child(self, raw_data):
-        return RandomItem(raw_data)
 
 class PlaylistItem(Item):
     """
