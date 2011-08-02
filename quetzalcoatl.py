@@ -11,7 +11,7 @@ setapi("QString", 2)
 setapi("QUrl", 2)
 
 from sys import argv, exit
-from PyQt4.QtCore import QAbstractItemModel, QObject
+from PyQt4.QtCore import QAbstractItemModel, QObject, QByteArray, QDataStream, QIODevice, QMimeData
 from PyKDE4 import kdecore, kdeui
 from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
 from PyKDE4.kdeui import KIcon
@@ -92,6 +92,7 @@ class UI(kdeui.KMainWindow):
         playlist_model = PlaylistModel(client, Item())
         playlist_view.setModel(playlist_model)
         self.poller.playlist_changed.connect(playlist_model.set_playlist)
+        playlist_model.status_changed.connect(self.poller.poll)
 
 
 class ItemView(QTreeView):
@@ -319,6 +320,10 @@ class ItemModel(QAbstractItemModel):
         item.raw_data = value
         self.dataChanged.emit(index, index)
 
+    @property
+    def client(self):
+        return self.__client
+
 class PlaylistModel(ItemModel):
     def __init__(self, client, root, parent_index=None):
         super(PlaylistModel, self).__init__(client, root, parent_index)
@@ -335,8 +340,24 @@ class PlaylistModel(ItemModel):
                 self.append_row(PlaylistItem(song))
    
     def dropMimeData(self, data, action, row, column, parent):
-        print str(e)
-        return True
+        mime_type = self.mimeTypes()[0]
+        if data.hasFormat(mime_type):
+            encoded_data = data.data(mime_type)
+            stream = QDataStream(encoded_data, QIODevice.ReadOnly)
+            songids = []
+            while not stream.atEnd():
+                songids.append(stream.readUInt16())
+
+            # The moment of truth
+
+            for songid in songids:
+                self.client.moveid(songid, row)
+
+            self.change_status()
+
+            return True
+            
+        return False
 
     def flags(self, index):
         if index.isValid():
@@ -346,6 +367,21 @@ class PlaylistModel(ItemModel):
             return flags
         else:
             return Qt.ItemIsDropEnabled
+
+    def mimeTypes(self):
+        return ['x-application/vnd.mpd.songid']
+
+    def mimeData(self, indexes):
+        encoded_data = QByteArray()
+        stream = QDataStream(encoded_data, QIODevice.WriteOnly)
+        for songid in set(self.itemFromIndex(x).raw_data['id']
+                for x in indexes if x.isValid()):
+            stream.writeUInt16(songid)
+        mime_data = QMimeData()
+        mime_data.setData(self.mimeTypes()[0], encoded_data)
+
+        
+        return mime_data
 
 class Item(object):
     """ A model item. """
@@ -385,7 +421,7 @@ class Item(object):
 
     @raw_data.setter
     def raw_data(self, value):
-        return self.__raw_data
+        self.__raw_data = value
 
     def append_row(self, child):
         """ Adds a child item. """
@@ -676,6 +712,7 @@ class Poller(QObject):
 
             else:
                 self.playlist_changed.emit(sorted(self.__client.playlistinfo(),
+
                     key=lambda x: x['pos']), status['playlistlength'])
 
         self.__status = status
