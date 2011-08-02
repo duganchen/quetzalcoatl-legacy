@@ -75,9 +75,15 @@ class UI(kdeui.KMainWindow):
         splitter.addWidget(database_view)
         database_model = ItemModel(client, root)
         database_view.setModel(database_model)
+        database_view.setDragEnabled(True)
         database_view.doubleClicked.connect(database_model.handleDoubleClick)
         database_view.setHeaderHidden(True)
         playlist_view = ItemView()
+        
+        playlist_view.setSelectionMode(playlist_view.ExtendedSelection)
+        playlist_view.setDragEnabled(True);
+        playlist_view.setAcceptDrops(True);
+        playlist_view.setDropIndicatorShown(True);
         splitter.addWidget(playlist_view)
 
         # Connecting signals doesn't keep it from being released.
@@ -228,7 +234,7 @@ class ItemModel(QAbstractItemModel):
     def __header_is_valid(self, section, orientation, role):
         
         """
-        Returns whether the parameters refer to a
+        tad
         valid header.
         """
         
@@ -260,6 +266,7 @@ class ItemModel(QAbstractItemModel):
 
         if len(rows) == 0:
             return
+
         self.beginInsertRows(parent_index, parent.row_count,
                              parent.row_count + len(rows))
         for row in rows:
@@ -293,23 +300,43 @@ class ItemModel(QAbstractItemModel):
         Appends an item to the root.
         """
 
+        self.beginInsertRows(QModelIndex(), self.__root.row_count,
+                self.__root.row_count)
         self.__root.append_row(item)
+        self.endInsertRows()
 
     def remove_rows(self, row, count):
         """
-        Removes count rows from the root, starting at row.
+        Removes count rows from the root,00 starting at row.
         """
+        self.beginRemoveRows(QModelIndex(), row, row + count - 1)
         self.__root.remove_rows(row, count)
+        self.endRemoveRows()
+
+    def set_raw_data(self, row, value):
+        index = self.index(row, 0)
+        item = self.itemFromIndex(index)
+        item.raw_data = value
+        self.dataChanged.emit(index, index)
 
 class PlaylistModel(ItemModel):
     def __init__(self, client, root, parent_index=None):
         super(PlaylistModel, self).__init__(client, root, parent_index)
 
     def set_playlist(self, playlist, length):
-        self.beginInsertRows(QModelIndex(), 0, length - 1)
+        old_length = self.rowCount()
+        if length < old_length:
+            self.remove_rows(old_length, length - old_length + 1)
+
         for song in playlist:
-            self.append_row(PlaylistItem(song))
-        self.endInsertRows()
+            if song['pos'] < old_length:
+                self.set_raw_data(song['pos'], song)
+            else:
+                self.append_row(PlaylistItem(song))
+   
+    def dropMimeData(self, data, action, row, column, parent):
+        print data
+        return True
 
 class Item(object):
     """ A model item. """
@@ -329,7 +356,7 @@ class Item(object):
     icons['.wav'] = QIcon(KIcon('audio-x-wav'))
 
 
-    def __init__(self, parent=None):
+    def __init__(self, raw_data=None, parent=None):
         """
         Creates an Item with the most
         boring default settings possible.
@@ -341,6 +368,15 @@ class Item(object):
         self.__has_children = False
         self.__flags = Qt.NoItemFlags
         self.__column_data = {}
+        self.__raw_data = raw_data
+
+    @property
+    def raw_data(self):
+        return self.__raw_data
+
+    @raw_data.setter
+    def raw_data(self, value):
+        return self.__raw_data
 
     def append_row(self, child):
         """ Adds a child item. """
@@ -366,10 +402,10 @@ class Item(object):
         """
         Returns data for the item's display role..
         
-        Default implementation returns nothing.
+        Default implementation returns the raw data.
         """
         
-        return None
+        return self.__raw_data
     
     @property
     def row(self):
@@ -503,21 +539,23 @@ class Item(object):
             return '{0:02}:{1:02}'.format(minutes, seconds)
         return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
 
+    def create_child(raw_data):
+        return Item(raw_data)
+
 class RandomItem(Item):
     """
     For songs not sorted by album.
     """
     def __init__(self, song):
-        super(RandomItem, self).__init__()
+        super(RandomItem, self).__init__(song)
         self.flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
         self.icon = self.icons['audio-x-generic']
         self.has_children = False
         self.can_fetch_more = False
-        self.__song = song
     
     def data(self, index):
         if index.column() == 0:
-            return self.title(self.__song).decode('utf-8')
+            return self.title(self.raw_data).decode('utf-8')
         return None
 
     def handleDoubleClick(self, client, updateFunc):
@@ -526,7 +564,7 @@ class RandomItem(Item):
         """
 
         try:
-            client.playid(client.addid(self.__song['file']))
+            client.playid(client.addid(self.raw_data['file']))
             updateFunc()
         except Exception as e:
             print str(e)
@@ -537,7 +575,7 @@ class AllSongsItem(Item):
     """
     
     def __init__(self):
-        super(AllSongsItem, self).__init__()
+        super(AllSongsItem, self).__init__("Songs")
         self.flags = Qt.ItemIsEnabled
         self.icon = self.icons['server-database']
         self.has_children = True
@@ -545,7 +583,7 @@ class AllSongsItem(Item):
     
     def data(self, index):
         if index.column() == 0:
-            return 'Songs'
+            return self.raw_data
 
         return None
 
@@ -553,19 +591,25 @@ class AllSongsItem(Item):
         songs = (x for x in client.listallinfo() if 'file' in x)
         return [RandomItem(x) for x in sorted(songs, key=self.random_key)]
 
+    def create_child(self, raw_data):
+        return RandomItem(raw_data)
+
 class PlaylistItem(Item):
     """
     A song in the playlist.
     """
     def __init__(self, song):
-        super(PlaylistItem, self).__init__()
-        self.__song = song
+        super(PlaylistItem, self).__init__(song)
+        self.flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
 
     def data(self, index):
         if index.column() == 0:
-            return self.title(self.__song)
+            return self.title(self.raw_data)
         return None
 
+    @property
+    def icon(self):
+        return self.icons['audio-x-generic']
 
 class Poller(QObject):
 
@@ -622,10 +666,14 @@ class Poller(QObject):
             if 'songid' in status:
                 self.song_id_changed.emit(status['songid'])
 
-        if self.__is_changed(status, 'playlist'):
-            # Exceptions thrown here propagate and are handled by poll()
-            self.playlist_changed.emit(sorted(self.__client.playlistinfo(),
-                key=lambda x: x['pos']), status['playlistlength'])
+        if 'playlist' in status:
+            if 'playlist' in self.__status:
+                self.playlist_changed.emit(sorted(self.__client.plchanges(self.__status['playlist']),
+                    key=lambda x: x['pos']), status['playlistlength'])
+
+            else:
+                self.playlist_changed.emit(sorted(self.__client.playlistinfo(),
+                    key=lambda x: x['pos']), status['playlistlength'])
 
         self.__status = status
 
