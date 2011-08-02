@@ -338,6 +338,15 @@ class PlaylistModel(ItemModel):
         print data
         return True
 
+    def flags(self, index):
+        if index.isValid():
+            flags = self.itemFromIndex(index).flags
+            if index.column() > 0:
+                flags &= ~Qt.ItemIsDraggable
+            return flags
+        else:
+            return Qt.ItemIsDroppable
+
 class Item(object):
     """ A model item. """
 
