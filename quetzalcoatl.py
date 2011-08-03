@@ -324,6 +324,10 @@ class ItemModel(QAbstractItemModel):
     def client(self):
         return self.__client
 
+class DatabaseModel(ItemModel):
+    def __init__(self, client, root, parent_index=None):
+        super(DatabaseModel, self).__init__(client, root, parent_index)
+
 class PlaylistModel(ItemModel):
     def __init__(self, client, root, parent_index=None):
         super(PlaylistModel, self).__init__(client, root, parent_index)
@@ -544,12 +548,15 @@ class Item(object):
 
         return []
 
-    def handleDoubleClick(self, client, updateFuc):
+    def handleDoubleClick(self, client, callback):
         """
         Handles double clicks.
+
+        The callback gets called on completion.
         """
 
-        pass
+        callback()
+
 
     @classmethod
     def title(cls, song):
@@ -600,14 +607,14 @@ class RandomItem(Item):
             return self.title(self.raw_data).decode('utf-8')
         return None
 
-    def handleDoubleClick(self, client, updateFunc):
+    def handleDoubleClick(self, client, callback):
         """
         Reimplementation
         """
 
         try:
             client.playid(client.addid(self.raw_data['file']))
-            updateFunc()
+            callback()
         except Exception as e:
             print str(e)
 
