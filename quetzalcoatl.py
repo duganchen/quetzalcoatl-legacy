@@ -147,7 +147,6 @@ class ItemModel(QAbstractItemModel):
         self.__client = client
 
     def data(self, index, role=Qt.DisplayRole):
-        """ reimplementation """
         
         item = self.itemFromIndex(index)
         
@@ -281,14 +280,6 @@ class ItemModel(QAbstractItemModel):
         parent = self.itemFromIndex(parent_index)
         return parent.has_children
         
-    def handleDoubleClick(self, index):
-        """
-        Handles double clicks.
-
-        Defers to the item under the cursor.
-        """
-        self.itemFromIndex(index).handleDoubleClick(self.__client,
-                self.change_status)
 
     def change_status(self):
 
@@ -324,9 +315,14 @@ class ItemModel(QAbstractItemModel):
     def client(self):
         return self.__client
 
-class DatabaseModel(ItemModel):
-    def __init__(self, client, root, parent_index=None):
-        super(DatabaseModel, self).__init__(client, root, parent_index)
+    def handleDoubleClick(self, index):
+        """
+        Handles double clicks.
+
+        Defers to the item under the cursor.
+        """
+        self.itemFromIndex(index).handleDoubleClick(self.__client,
+                self.change_status)
 
 class PlaylistModel(ItemModel):
     def __init__(self, client, root, parent_index=None):
@@ -386,6 +382,8 @@ class PlaylistModel(ItemModel):
 
         
         return mime_data
+
+    def data(self, index, role=Qt.DisplayRole):
 
 class Item(object):
     """ A model item. """
@@ -594,6 +592,7 @@ class Item(object):
 class RandomItem(Item):
     """
     For songs not sorted by album.
+        pass
     """
     def __init__(self, song):
         super(RandomItem, self).__init__(song)
