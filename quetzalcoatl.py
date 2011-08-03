@@ -11,12 +11,10 @@ setapi("QString", 2)
 setapi("QUrl", 2)
 
 from sys import argv, exit
-from PyQt4.QtCore import QAbstractItemModel, QObject, QByteArray, QDataStream, QIODevice, QMimeData
-from PyKDE4 import kdecore, kdeui
-from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
-from PyKDE4.kdeui import KIcon
-from PyQt4.QtGui import QIcon, QTreeView, QMainWindow, QVBoxLayout, QWidget
-from PyQt4.QtGui import QSplitter, QFont
+from PyQt4.QtCore import *
+from PyQt4.QtGui import *
+from PyKDE4.kdecore import *
+from PyKDE4.kdeui import *
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 from socket import error
@@ -36,34 +34,61 @@ from socket import error
 def main():
     appName = "Quetzalcoatl"
     catalog = ""
-    programName = kdecore.ki18n("Quetzalcoatl")
+    programName = ki18n("Quetzalcoatl")
     version = "1.0"
-    description = kdecore.ki18n("mpd client")
-    license = kdecore.KAboutData.License_GPL
-    copyright = kdecore.ki18n("(c) 2009 Dugan Chen")
-    text = kdecore.ki18n("none")
+    description = ki18n("mpd client")
+    license = KAboutData.License_GPL
+    copyright = ki18n("(c) 2009 Dugan Chen")
+    text = ki18n("none")
     homePage = "www.duganchen.ca"
     bugEmail = "see homepage"
-    aboutData = kdecore.KAboutData(appName, catalog, programName, version, \
+    aboutData = KAboutData(appName, catalog, programName, version, \
     description, license, copyright, text, homePage, bugEmail)
 
-    kdecore.KCmdLineArgs.init(argv, aboutData)
-    app = kdeui.KApplication()
+    KCmdLineArgs.init(argv, aboutData)
+    app = KApplication()
     main = UI(None)
     main.show()
     exit(app.exec_())
 
-class UI(kdeui.KMainWindow):
+class UI(KMainWindow):
 
     def __init__(self, client):
-        QMainWindow.__init__(self)
-        self.setWindowIcon(kdeui.KIcon("multimedia-player"))
+        KMainWindow.__init__(self)
+        self.setWindowIcon(KIcon("multimedia-player"))
         self.resize(800, 600)
         self.setWindowTitle('Quetzalcoatl')
         centralWidget = QWidget(self)
         self.setCentralWidget(centralWidget)
         layout = QVBoxLayout()
         centralWidget.setLayout(layout)
+
+        toolBar = self.toolBar('ToolBar')
+        
+        toolBar.setToolBarsEditable(False)
+        toolBar.setToolBarsLocked(True)
+        toolBar.setToolButtonStyle(Qt.ToolButtonIconOnly)
+
+        stop = KAction(KIcon('media-playback-stop'), 'Stop', self)
+        toolBar.addAction(stop)
+
+        play_pause = KAction(KIcon('media-playback-start'), 'Play', self)
+        toolBar.addAction(play_pause)
+
+        skip_backward = KAction(KIcon('media-skip-backward'), 'Previous', self)
+        toolBar.addAction(skip_backward)
+
+        skip_forward = KAction(KIcon('media-skip-forward'), 'Next', self)
+        toolBar.addAction(skip_forward)
+
+        toolBar.addSeparator()
+
+        shuffle = KAction(KIcon('media-playlist-shuffle'), 'Shuffle', self)
+        toolBar.addAction(shuffle)
+
+        repeat = KAction(KIcon('media-playlist-repeat'), '', self)
+        toolBar.addAction(repeat)
+
         splitter = QSplitter()
         layout.addWidget(splitter)
         client = Client({'host': 'localhost', 'port': 6600})
@@ -88,11 +113,11 @@ class UI(kdeui.KMainWindow):
 
         # Connecting signals doesn't keep it from being released.
         self.poller = Poller(client)
-        database_model.status_changed.connect(self.poller.poll)
+        database_model.server_updated.connect(self.poller.poll)
         playlist_model = PlaylistModel(client, Item())
         playlist_view.setModel(playlist_model)
         self.poller.playlist_changed.connect(playlist_model.set_playlist)
-        playlist_model.status_changed.connect(self.poller.poll)
+        playlist_model.server_updated.connect(self.poller.poll)
 
 
 class ItemView(QTreeView):
@@ -134,32 +159,24 @@ class ItemModel(QAbstractItemModel):
     
     """ The Quetzalcoatl item model. """
 
-    status_changed = pyqtSignal()
+    server_updated = pyqtSignal()
     
     def __init__(self, client, root, parent=None):
-        """ Initializes the model with default values. """
-        
         super(ItemModel, self).__init__(parent)
-        
         self.__root = root
         self.__root.has_children = True
         self.__headers = ['0', '1']
         self.__client = client
 
     def data(self, index, role=Qt.DisplayRole):
-        
         item = self.itemFromIndex(index)
-        
         if role == Qt.DecorationRole and index.column() == 0:
             return item.icon
-        
         if role == Qt.DisplayRole:
             return item.data(index)
-        
         return None
 
     def flags(self, index):
-        """ reimplementation """
         
         item = self.itemFromIndex(index)
         if item != self.__root:
@@ -167,7 +184,6 @@ class ItemModel(QAbstractItemModel):
         return Qt.NoItemFlags
 
     def index(self, row, column, parent_index=QModelIndex()):
-        """ reimplementation """
         
         if not self.hasIndex(row, column, parent_index):
             return QModelIndex()
@@ -180,7 +196,6 @@ class ItemModel(QAbstractItemModel):
         return QModelIndex()
         
     def parent(self, index):
-        """ reimplementation """
         
         if not index.isValid():
             return QModelIndex()
@@ -195,8 +210,6 @@ class ItemModel(QAbstractItemModel):
         
     def rowCount(self, parent_index=QModelIndex()):
         
-        """ reimplementation """
-        
         if parent_index.column() > 0:
             return 0
 
@@ -205,26 +218,20 @@ class ItemModel(QAbstractItemModel):
         
     def columnCount(self, parent_index=QModelIndex()):
         
-        """ reimplementation """
-        
         return len(self.__headers)
     
     def itemFromIndex(self, index):
-        """ Returns the item at the specified index. """
         if not index.isValid():
             return self.__root
         return index.internalPointer()
     
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         
-        """ reimplementation """
-        
         if self.__header_is_valid(section, orientation, role):
             return self.__headers[section]
         return None
     
     def setHeaderData(self, section, orientation, value, role=Qt.EditRole):
-        """ reimplementation """
         if self.__header_is_valid(section, orientation, role):
             self.__headers[section] = value
             self.headerDataChanged.emit(orientation, section, section)
@@ -232,11 +239,6 @@ class ItemModel(QAbstractItemModel):
         return False
     
     def __header_is_valid(self, section, orientation, role):
-        
-        """
-        tad
-        valid header.
-        """
         
         if section > len(self.__headers) - 1:
             return False
@@ -247,14 +249,11 @@ class ItemModel(QAbstractItemModel):
         return True
     
     def canFetchMore(self, parent_index):
-        """ reimplementation """
         
         parent = self.itemFromIndex(parent_index)
         return parent.can_fetch_more
     
     def fetchMore(self, parent_index):
-        
-        """ reimplementation """
         
         parent = self.itemFromIndex(parent_index)
 
@@ -275,17 +274,9 @@ class ItemModel(QAbstractItemModel):
         parent.can_fetch_more = False
             
     def hasChildren(self, parent_index=QModelIndex()):
-        """ reimplementation """
-          
         parent = self.itemFromIndex(parent_index)
         return parent.has_children
         
-
-    def change_status(self):
-
-        """ signals that we need to poll for updates. """
-
-        self.status_changed.emit()
 
     def append_row(self, item):
         """
@@ -322,7 +313,11 @@ class ItemModel(QAbstractItemModel):
         Defers to the item under the cursor.
         """
         self.itemFromIndex(index).handleDoubleClick(self.__client,
-                self.change_status)
+                self.invalidate_server)
+
+
+    def invalidate_server(self):
+        self.server_updated.emit()
 
 class PlaylistModel(ItemModel):
     def __init__(self, client, root, parent_index=None):
@@ -356,7 +351,7 @@ class PlaylistModel(ItemModel):
                     self.client.moveid(songid, dest_row)
                     dest_row += 1
 
-            self.change_status()
+            self.server_updated.emit()
 
             return True
             
@@ -366,7 +361,7 @@ class PlaylistModel(ItemModel):
         if index.isValid():
             flags = self.itemFromIndex(index).flags
             if index.column() > 1:
-                flags &= ~Qt.ItemIsDragEnabled
+                flags &= ~ItemIsDragEnabled
             return flags
         else:
             return Qt.ItemIsDropEnabled
