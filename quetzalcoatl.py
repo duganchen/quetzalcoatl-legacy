@@ -16,7 +16,7 @@ from PyKDE4 import kdecore, kdeui
 from PyQt4.QtCore import QSize, Qt, QModelIndex, QTimer, pyqtSignal
 from PyKDE4.kdeui import KIcon
 from PyQt4.QtGui import QIcon, QTreeView, QMainWindow, QVBoxLayout, QWidget
-from PyQt4.QtGui import QSplitter
+from PyQt4.QtGui import QSplitter, QFont
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 from socket import error
@@ -344,13 +344,21 @@ class PlaylistModel(ItemModel):
         if data.hasFormat(mime_type):
             encoded_data = data.data(mime_type)
             stream = QDataStream(encoded_data, QIODevice.ReadOnly)
-            songids = []
+            rows = []
             while not stream.atEnd():
-                songids.append(stream.readUInt16())
+                rows.append(stream.readUInt16())
 
-            # The moment of truth
+            # This is wrong. The right way to do it is that if the destination
+            # row comes after the source row, then you drop to one above the
+            # destination row. Otherwise you just drop to the destination row.
+            #
+            # This is for moving one row.
 
             for songid in songids:
+                row -= 1
+                if row < 0:
+                    row = 0
+                print row
                 self.client.moveid(songid, row)
 
             self.change_status()
@@ -374,9 +382,9 @@ class PlaylistModel(ItemModel):
     def mimeData(self, indexes):
         encoded_data = QByteArray()
         stream = QDataStream(encoded_data, QIODevice.WriteOnly)
-        for songid in set(self.itemFromIndex(x).raw_data['id']
+        for row in set(self.itemFromIndex(x).row
                 for x in indexes if x.isValid()):
-            stream.writeUInt16(songid)
+            stream.writeUInt16(row)
         mime_data = QMimeData()
         mime_data.setData(self.mimeTypes()[0], encoded_data)
 
@@ -384,6 +392,13 @@ class PlaylistModel(ItemModel):
         return mime_data
 
     def data(self, index, role=Qt.DisplayRole):
+        if role == Qt.FontRole:
+            font = QFont()
+            font.setBold(True)
+            return font
+
+        else:
+            return super(PlaylistModel, self).data(index, role)
 
 class Item(object):
     """ A model item. """
