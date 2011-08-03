@@ -344,22 +344,17 @@ class PlaylistModel(ItemModel):
         if data.hasFormat(mime_type):
             encoded_data = data.data(mime_type)
             stream = QDataStream(encoded_data, QIODevice.ReadOnly)
-            rows = []
+            root = self.itemFromIndex(QModelIndex())
+            dest_row = row
             while not stream.atEnd():
-                rows.append(stream.readUInt16())
-
-            # This is wrong. The right way to do it is that if the destination
-            # row comes after the source row, then you drop to one above the
-            # destination row. Otherwise you just drop to the destination row.
-            #
-            # This is for moving one row.
-
-            for songid in songids:
-                row -= 1
-                if row < 0:
-                    row = 0
-                print row
-                self.client.moveid(songid, row)
+                source_row = stream.readUInt16()
+                item = root.child(source_row)
+                songid = item.raw_data['id']
+                if source_row < dest_row:
+                    self.client.moveid(songid, dest_row - 1)
+                else:
+                    self.client.moveid(songid, dest_row)
+                    dest_row += 1
 
             self.change_status()
 
@@ -382,8 +377,8 @@ class PlaylistModel(ItemModel):
     def mimeData(self, indexes):
         encoded_data = QByteArray()
         stream = QDataStream(encoded_data, QIODevice.WriteOnly)
-        for row in set(self.itemFromIndex(x).row
-                for x in indexes if x.isValid()):
+        for row in sorted(set(self.itemFromIndex(x).row
+                for x in indexes if x.isValid())):
             stream.writeUInt16(row)
         mime_data = QMimeData()
         mime_data.setData(self.mimeTypes()[0], encoded_data)
