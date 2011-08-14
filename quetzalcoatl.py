@@ -33,7 +33,7 @@ from datetime import timedelta
 # Audiobooks
 
 # TO DO: Sorting tracks in an album should take disc numbers into account.
-
+# Sorting of tags and random songs should be case insensitive.
 
 def main():
     appName = "Quetzalcoatl"
@@ -784,6 +784,34 @@ class Genres(ExpandableItem):
 
     def __init__(self):
         super(Genres, self).__init__('Genres', 'server-database')
+    
+    def fetch_more(self, client):
+        return [Genre(genre) for genre in sorted(client.list('genre'))]
+
+class Genre(ExpandableItem):
+    """
+    Genres -> Genre
+    """
+
+    def __init__(self, genre):
+        super(Genre, self).__init__(genre, 'folder-sound')
+        self.__genre = genre
+    
+    def fetch_more(self, client):
+        generic_songs = client.find('genre', self.__genre)
+        valid_songs = (song['artist'] for song in generic_songs if 'artist' in song and len(song['artist']) > 0)
+        artists = sorted(set(valid_songs))
+        return [GenreArtist(self.__genre, artist) for artist in artists]
+    
+class GenreArtist(ExpandableItem):
+    """
+    Genres -> Genre -> Artist
+    """
+
+    def __init__(self, genre, artist):
+        super(GenreArtist, self).__init__(artist, 'folder-sound')
+        self.__genre = genre
+        self.__artist = artist
     
     def fetch_more(self, client):
         return []
