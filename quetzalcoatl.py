@@ -93,8 +93,14 @@ class UI(KMainWindow):
         layout.addWidget(splitter)
         client = Client({'host': 'localhost', 'port': 6600})
         root = Item()
-        root.append_row(AllSongsItem())
-        root.append_row(AllSongsItem())
+        root.append_row(Playlists())
+        root.append_row(Artists())
+        root.append_row(Albums())
+        root.append_row(Compilations())
+        root.append_row(AllSongs())
+        root.append_row(Genres())
+        root.append_row(Composers())
+        root.append_row(Directories())
         root.has_children = True
         database_view = ItemView()
         splitter.addWidget(database_view)
@@ -361,7 +367,7 @@ class PlaylistModel(ItemModel):
         if index.isValid():
             flags = self.itemFromIndex(index).flags
             if index.column() > 1:
-                flags &= ~ItemIsDragEnabled
+                flags &= ~Qt.ItemIsDragEnabled
             return flags
         else:
             return Qt.ItemIsDropEnabled
@@ -622,27 +628,117 @@ class RandomItem(Item):
         except Exception as e:
             print str(e)
 
-class AllSongsItem(Item):
+class ExpandableItem(Item):
     """
-    The navigation node for all songs.
+    An expandable item. In the database model.
     """
     
-    def __init__(self):
-        super(AllSongsItem, self).__init__("Songs")
-        self.flags = Qt.ItemIsEnabled
-        self.icon = self.icons['server-database']
+    def __init__(self, label, icon_name):
+        """
+        Takes a text label and the name of its icon.
+        """
+        super(ExpandableItem, self).__init__(label)
+        self.icon = self.icons[icon_name]
         self.has_children = True
         self.can_fetch_more = True
-    
+        self.flags = Qt.ItemIsEnabled
+
     def data(self, index):
         if index.column() == 0:
             return self.raw_data
 
         return None
 
+class AllSongs(ExpandableItem):
+    """
+    The navigation node for all songs.
+    """
+    
+    def __init__(self):
+        super(AllSongs, self).__init__('Songs', 'server-database')
+
     def fetch_more(self, client):
         songs = (x for x in client.listallinfo() if 'file' in x)
         return [RandomItem(x) for x in sorted(songs, key=self.random_key)]
+
+class Playlists(ExpandableItem):
+    """
+    The node for the stored playlists.
+    """
+    
+    def __init__(self):
+        super(Playlists, self).__init__('Playlists', 'folder-documents')
+    
+    def fetch_more(self, client):
+        return []
+
+class Artists(ExpandableItem):
+    """
+    The Artists node.
+    """
+
+    def __init__(self):
+        super(Artists, self).__init__('Artists', 'server-database')
+    
+    def fetch_more(self, client):
+        return []
+
+
+class Albums(ExpandableItem):
+    """
+    The Artists node.
+    """
+
+    def __init__(self):
+        super(Albums, self).__init__('Albums', 'server-database')
+    
+    def fetch_more(self, client):
+        return []
+
+class Genres(ExpandableItem):
+    """
+    The Genres node.
+    """
+
+    def __init__(self):
+        super(Genres, self).__init__('Genres', 'server-database')
+    
+    def fetch_more(self, client):
+        return []
+
+class Compilations(ExpandableItem):
+    """
+    The Compilations (Album Artists) node.
+    """
+
+    def __init__(self):
+        super(Compilations, self).__init__('Compilations', 'server-database')
+    
+    def fetch_more(self, client):
+        return []
+
+class Composers(ExpandableItem):
+    """
+    The Composers node.
+    """
+
+    def __init__(self):
+        super(Composers, self).__init__('Composers', 'server-database')
+    
+    def fetch_more(self, client):
+        return []
+
+class Directories(ExpandableItem):
+    """
+    The Directories node.
+    """
+
+    def __init__(self):
+        super(Directories, self).__init__('Directories', 'drive-harddisk')
+    
+    def fetch_more(self, client):
+        return []
+
 
 class PlaylistItem(Item):
     """
@@ -656,7 +752,7 @@ class PlaylistItem(Item):
         if index.column() == 0:
             return self.title(self.raw_data)
         return None
-
+    
     @property
     def icon(self):
         return self.icons['audio-x-generic']
