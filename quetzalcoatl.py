@@ -750,7 +750,7 @@ class PlaylistItem(Item):
 
     def data(self, index):
         if index.column() == 0:
-            return self.title(self.raw_data)
+            return self.title(self.raw_data).decode('utf-8')
         return None
     
     @property
