@@ -669,6 +669,14 @@ class ExpandableItem(Item):
 
         return None
 
+    @classmethod
+    def has_tag(cls, song, tag):
+        return tag in song and len(song[tag].strip()) > 0
+    
+    @classmethod
+    def match_tag(cls, song, tag, value):
+        return tag in song and song[tag] == value
+
 class AllSongs(ExpandableItem):
     """
     The navigation node for all songs.
@@ -788,19 +796,7 @@ class Genres(ExpandableItem):
     def fetch_more(self, client):
         return [Genre(genre) for genre in sorted(client.list('genre'))]
 
-class ExpandableGenre(ExpandableItem):
-    def __init(self, label, icon_name):
-        super(ExpandableGenre, self).__init__(label, icon_name)
-    
-    @classmethod
-    def tag_in_song(cls, song, tag):
-        return tag in song and len(song[tag].strip()) > 0
-    
-    @classmethod
-    def tag_match(cls, song, tag, value):
-        return tag in song and song[tag] == value
-
-class Genre(ExpandableGenre):
+class Genre(ExpandableItem):
     """
     Genres -> Genre
     """
@@ -810,15 +806,15 @@ class Genre(ExpandableGenre):
         self.__genre = genre
     
     def fetch_more(self, client):
-        raw_artists = (song['artist'] for song in client.find('genre', self.__genre) if self.__song_is_valid(song))
+        raw_artists = (song['artist'] for song in client.find('genre', self.__genre) if self.__is_valid(song))
         artists = sorted(set(raw_artists))
         return [GenreArtist(self.__genre, artist) for artist in artists]
 
     @classmethod
-    def __song_is_valid(self, song):
-        return self.tag_in_song(song, 'artist') and self.tag_in_song(song, 'album')
+    def __is_valid(self, song):
+        return self.has_tag(song, 'artist') and self.has_tag(song, 'album')
     
-class GenreArtist(ExpandableGenre):
+class GenreArtist(ExpandableItem):
     """
     Genres -> Genre -> Artist
     """
@@ -829,14 +825,14 @@ class GenreArtist(ExpandableGenre):
         self.__artist = artist
     
     def fetch_more(self, client):
-        raw_albums = (song['album'] for song in client.find('artist', self.__artist) if self.__song_is_valid(song))
+        raw_albums = (song['album'] for song in client.find('artist', self.__artist) if self.__is_valid(song))
         albums = sorted(set(raw_albums))
         return [GenreArtistAlbum(self.__genre, self.__artist, album) for album in albums]
     
-    def __song_is_valid(self, song):
-        return self.tag_match(song, 'genre', self.__genre) and self.tag_in_song(song, 'album')
+    def __is_valid(self, song):
+        return self.match_tag(song, 'genre', self.__genre) and self.has_tag(song, 'album')
 
-class GenreArtistAlbum(ExpandableGenre):
+class GenreArtistAlbum(ExpandableItem):
     
     """
     Genres -> Genre -> Artist -> Album
@@ -850,8 +846,11 @@ class GenreArtistAlbum(ExpandableGenre):
         
     def fetch_more(self, client):
         album_songs = client.find('album', self.__album)
-        valid_songs = (song for song in album_songs if 'genre' in song and song['genre'] == self.__genre and 'artist' in song and song['artist'] == self.__artist)
+        valid_songs = (song for song in album_songs if 'genre' in song and self.__is_valid(song))
         return [AlbumSong(song) for song in valid_songs]
+    
+    def __is_valid(self, song):
+        return self.match_tag(song, 'genre', self.__genre) and self.match_tag(song, 'artist', self.__artist)
 
 class Composers(ExpandableItem):
     """
@@ -862,7 +861,35 @@ class Composers(ExpandableItem):
         super(Composers, self).__init__('Composers', 'server-database')
     
     def fetch_more(self, client):
-        return []
+        return [Composer(composer) for composer in sorted(client.list('composer'))]
+
+class Composer(ExpandableItem):
+    """
+    Composers -> Composer
+    """
+    def __init__(self, composer):
+        super(Composer, self).__init__(composer, 'folder-sound')
+        self.__composer = composer
+    
+    def fetch_more(self, client):
+        raw_albums = (song['album'] for song in client.find('composer', self.__composer) if self.__is_valid(song))
+        albums = sorted(set(raw_albums))
+        return [ComposerAlbum(self.__composer, album) for album in albums]
+    
+    def __is_valid(self, song):
+        return self.has_tag(song, 'album')
+
+class ComposerAlbum(ExpandableItem):
+    """
+    Composers -> Composer -> Album
+    """
+    def __init__(self, composer, album):
+        super(ComposerAlbum, self).__init__(album, 'media-optical-audio')
+        self.__composer = composer
+        self.__album = album
+    
+    def fetch_more(self, client):
+        return [AlbumSong(song) for song in client.find('album', self.__album) if self.match_tag(song, 'composer', self.__composer)]
 
 class Directories(ExpandableItem):
     """
