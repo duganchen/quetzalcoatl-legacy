@@ -606,22 +606,26 @@ class Item(object):
             return '{0:02}:{1:02}'.format(minutes, seconds)
         return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
 
-class RandomItem(Item):
-    """
-    For songs not sorted by album.
-        pass
-    """
+class Song(Item):
+    
     def __init__(self, song):
-        super(RandomItem, self).__init__(song)
+        super(Song, self).__init__(song)
         self.flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
         self.icon = self.icons['audio-x-generic']
         self.has_children = False
         self.can_fetch_more = False
-    
+
     def data(self, index):
         if index.column() == 0:
             return self.title(self.raw_data).decode('utf-8')
         return None
+
+class RandomSong(Song):
+    """
+    For songs not sorted by album.
+    """
+    def __init__(self, song):
+        super(RandomSong, self).__init__(song)
 
     def handleDoubleClick(self, client, callback):
         """
@@ -633,6 +637,16 @@ class RandomItem(Item):
             callback()
         except Exception as e:
             print str(e)
+
+class AlbumSong(Song):
+    """
+    Songs in the context of an album.
+    """
+    
+    # The double-click event should send the entire album to the playlist.
+    
+    def __init__(self, song):
+        super(AlbumSong, self).__init__(song)
 
 class ExpandableItem(Item):
     """
@@ -665,7 +679,7 @@ class AllSongs(ExpandableItem):
 
     def fetch_more(self, client):
         songs = (x for x in client.listallinfo() if 'file' in x)
-        return [RandomItem(x) for x in sorted(songs, key=self.random_key)]
+        return [RandomSong(x) for x in sorted(songs, key=self.random_key)]
 
 class Playlists(ExpandableItem):
     """
@@ -696,10 +710,24 @@ class ArtistAlbums(ExpandableItem):
     """
 
     def __init__(self, artist):
-        super(ArtistAlbums, self).__init__(artist, 'server-database')
+        super(ArtistAlbums, self).__init__(artist, 'folder-sound')
+        self.__artist = artist
     
     def fetch_more(self, client):
-        return []
+        # To do: Have an "All Songs" folder
+        return [ArtistAlbum(self.__artist, album)
+                for album in sorted(client.list('album', self.__artist))]
+
+class ArtistAlbum(ExpandableItem):
+    
+    def __init__(self, artist, album):
+        super(ArtistAlbum, self).__init__(album, 'media-optical-audio')
+        self.__artist = artist
+        self.__album = album
+    
+    def fetch_more(self, client):
+        # This should be sorted. By disc number. Then by track number.
+        return [AlbumSong(song) for song in client.find('album', self.__album) if 'artist' in song and song['artist'] == self.__artist]
 
 class Albums(ExpandableItem):
     """
