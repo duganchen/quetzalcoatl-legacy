@@ -11,14 +11,13 @@ setapi("QString", 2)
 setapi("QUrl", 2)
 
 from sys import argv, exit
-from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
-from PyKDE4.kdeui import KAction, KApplication, KIcon, KMainWindow
-from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray, QDataStream, QIODevice, QMimeData, QModelIndex, QObject, QSize, Qt
-from PyQt4.QtGui import QFont, QIcon, QSplitter, QTreeView, QVBoxLayout, QWidget
+from PyQt4.QtCore import *
+from PyQt4.QtGui import *
+from PyKDE4.kdecore import *
+from PyKDE4.kdeui import *
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 from socket import error
-from datetime import timedelta
 
 # The root menu of my iPod video 5.5G is:
 # Playlists
@@ -36,7 +35,7 @@ def main():
     appName = "Quetzalcoatl"
     catalog = ""
     programName = ki18n("Quetzalcoatl")
-    version = "2.0"
+    version = "1.0"
     description = ki18n("mpd client")
     license = KAboutData.License_GPL
     copyright = ki18n("(c) 2009 Dugan Chen")
@@ -155,6 +154,12 @@ class ItemView(QTreeView):
         if self.model():
             for i in xrange(self.model().columnCount()):
                 self.resizeColumnToContents(i) 
+    
+    def resizeEvent(self, event):
+        """ On resize, auto-sizes all columns. """
+        super(ItemView, self).resizeEvent(event)
+        self.resizeColumnsToContents()
+
 
 class ItemModel(QAbstractItemModel):
     
@@ -580,14 +585,14 @@ class Item(object):
         return song['track'] if 'track' in song else cls.title(song).lower()
 
     @classmethod
-    def time_str(cls, dt):
+    def time_str(cls, second_count):
         """
-        Given a delta of time, returns a formatted string
+        Given an integer number of seconds, returns a formatted string
         representation.
         """
-        seconds = dt.seconds % 60
-        minutes = dt.seconds % 3600 / 60
-        hours = dt.seconds / 3600
+        seconds = second_count % 60
+        minutes = second_count % 3600 / 60
+        hours = second_count / 3600
         
         if hours == 0 and minutes == 0:
             return '0:{0:02}'.format(seconds)
@@ -746,8 +751,6 @@ class PlaylistItem(Item):
     def data(self, index):
         if index.column() == 0:
             return self.title(self.raw_data)
-        if index.column() == 1:
-            return self.time_str(self.raw_data['time'])
         return None
     
     @property
@@ -968,8 +971,8 @@ class SanitizedClient(object):
         
         if ':' in value:
             tokens = value.split(':')
-            return tuple([timedelta(seconds=int(x)) for x in tokens])
-        return timedelta(seconds=int(value))
+            return tuple([int(x) for x in tokens])
+        return int(value)
     
     @classmethod
     def __sanitize_playlist(cls, value):
