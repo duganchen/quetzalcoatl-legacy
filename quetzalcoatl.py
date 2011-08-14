@@ -738,7 +738,20 @@ class Albums(ExpandableItem):
         super(Albums, self).__init__('Albums', 'server-database')
     
     def fetch_more(self, client):
+        return [Album(album) for album in sorted(client.list('album'))]
+
+class Album(ExpandableItem):
+    """
+    Albums -> Album
+    """
+    
+    def __init__(self, album):
+        super(Album, self).__init__(album, 'folder-sound')
+        self.__album = album
+    
+    def fetch_more(self, client):
         return []
+
 
 class Genres(ExpandableItem):
     """
