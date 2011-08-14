@@ -753,6 +753,29 @@ class Album(ExpandableItem):
         # Should be sorted by disc number, then by track number.
         return [AlbumSong(song) for song in client.find('album', self.__album)]
 
+class Compilations(ExpandableItem):
+    """
+    The Compilations (Album Artists) node.
+    """
+
+    def __init__(self):
+        super(Compilations, self).__init__('Compilations', 'server-database')
+    
+    def fetch_more(self, client):
+        return [Compilation(artist) for artist in sorted(client.list('albumartist'))]
+
+class Compilation(ExpandableItem):
+    """
+    Compilations -> Compilation
+    """
+    
+    def __init__(self, artist):
+        super(Compilation, self).__init__(artist, 'folder-sound')
+        self.__artist = artist
+    
+    def fetch_more(self, client):
+        # Should be sorted by disc number, then by track number.
+        return [AlbumSong(song) for song in client.find('albumartist', self.__artist)]
 
 class Genres(ExpandableItem):
     """
@@ -761,17 +784,6 @@ class Genres(ExpandableItem):
 
     def __init__(self):
         super(Genres, self).__init__('Genres', 'server-database')
-    
-    def fetch_more(self, client):
-        return []
-
-class Compilations(ExpandableItem):
-    """
-    The Compilations (Album Artists) node.
-    """
-
-    def __init__(self):
-        super(Compilations, self).__init__('Compilations', 'server-database')
     
     def fetch_more(self, client):
         return []
