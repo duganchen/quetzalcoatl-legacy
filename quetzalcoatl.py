@@ -750,7 +750,8 @@ class Album(ExpandableItem):
         self.__album = album
     
     def fetch_more(self, client):
-        return []
+        # Should be sorted by disc number, then by track number.
+        return [AlbumSong(song) for song in client.find('album', self.__album)]
 
 
 class Genres(ExpandableItem):
