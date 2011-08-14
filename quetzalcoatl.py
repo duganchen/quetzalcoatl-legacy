@@ -32,6 +32,8 @@ from datetime import timedelta
 # Composers
 # Audiobooks
 
+# TO DO: Sorting tracks in an album should take disc numbers into account.
+
 
 def main():
     appName = "Quetzalcoatl"
@@ -685,16 +687,16 @@ class Artists(ExpandableItem):
         super(Artists, self).__init__('Artists', 'server-database')
     
     def fetch_more(self, client):
-        return []
+        return [ArtistAlbums(artist) for artist in sorted(client.list('artist'))]
 
 
-class Artist(ExpandableItem):
+class ArtistAlbums(ExpandableItem):
     """
-    The Artists node.
+    The albums-per-Artists->Artist node.
     """
 
     def __init__(self, artist):
-        super(Artists, self).__init__(artist, 'server-database')
+        super(ArtistAlbums, self).__init__(artist, 'server-database')
     
     def fetch_more(self, client):
         return []
@@ -971,7 +973,9 @@ class SanitizedClient(object):
         self.__sanitizers['genre'] = self.__sanitize_tag
         self.__sanitizers['album'] = self.__sanitize_tag
         self.__sanitizers['composer'] = self.__sanitize_tag
+        self.__sanitizers['albumartist'] = self.__sanitize_tag
         self.__sanitizers['mixrampdb'] = float
+        self.__sanitizers['disc'] = int
         self.__client = client
 
     @classmethod
