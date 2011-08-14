@@ -788,7 +788,19 @@ class Genres(ExpandableItem):
     def fetch_more(self, client):
         return [Genre(genre) for genre in sorted(client.list('genre'))]
 
-class Genre(ExpandableItem):
+class ExpandableGenre(ExpandableItem):
+    def __init(self, label, icon_name):
+        super(ExpandableGenre, self).__init__(label, icon_name)
+    
+    @classmethod
+    def tag_in_song(cls, song, tag):
+        return tag in song and len(song[tag].strip()) > 0
+    
+    @classmethod
+    def tag_match(cls, song, tag, value):
+        return tag in song and song[tag] == value
+
+class Genre(ExpandableGenre):
     """
     Genres -> Genre
     """
@@ -798,12 +810,15 @@ class Genre(ExpandableItem):
         self.__genre = genre
     
     def fetch_more(self, client):
-        generic_songs = client.find('genre', self.__genre)
-        valid_songs = (song['artist'] for song in generic_songs if 'artist' in song and len(song['artist']) > 0)
-        artists = sorted(set(valid_songs))
+        raw_artists = (song['artist'] for song in client.find('genre', self.__genre) if self.__song_is_valid(song))
+        artists = sorted(set(raw_artists))
         return [GenreArtist(self.__genre, artist) for artist in artists]
+
+    @classmethod
+    def __song_is_valid(self, song):
+        return self.tag_in_song(song, 'artist') and self.tag_in_song(song, 'album')
     
-class GenreArtist(ExpandableItem):
+class GenreArtist(ExpandableGenre):
     """
     Genres -> Genre -> Artist
     """
@@ -814,7 +829,29 @@ class GenreArtist(ExpandableItem):
         self.__artist = artist
     
     def fetch_more(self, client):
-        return []
+        raw_albums = (song['album'] for song in client.find('artist', self.__artist) if self.__song_is_valid(song))
+        albums = sorted(set(raw_albums))
+        return [GenreArtistAlbum(self.__genre, self.__artist, album) for album in albums]
+    
+    def __song_is_valid(self, song):
+        return self.tag_match(song, 'genre', self.__genre) and self.tag_in_song(song, 'album')
+
+class GenreArtistAlbum(ExpandableGenre):
+    
+    """
+    Genres -> Genre -> Artist -> Album
+    """
+    
+    def __init__(self, genre, artist, album):
+        super(GenreArtistAlbum, self).__init__(album, 'media-optical-audio')
+        self.__genre = genre
+        self.__artist = artist
+        self.__album = album
+        
+    def fetch_more(self, client):
+        album_songs = client.find('album', self.__album)
+        valid_songs = (song for song in album_songs if 'genre' in song and song['genre'] == self.__genre and 'artist' in song and song['artist'] == self.__artist)
+        return [AlbumSong(song) for song in valid_songs]
 
 class Composers(ExpandableItem):
     """
@@ -1057,7 +1094,7 @@ class SanitizedClient(object):
         self.__sanitizers['composer'] = self.__sanitize_tag
         self.__sanitizers['albumartist'] = self.__sanitize_tag
         self.__sanitizers['mixrampdb'] = float
-        self.__sanitizers['disc'] = int
+        self.__sanitizers['disc'] = self.__sanitized_track
         self.__client = client
 
     @classmethod
