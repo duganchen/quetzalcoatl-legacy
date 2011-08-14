@@ -94,19 +94,18 @@ class UI(KMainWindow):
         splitter = QSplitter()
         layout.addWidget(splitter)
         client = Client({'host': 'localhost', 'port': 6600})
-        root = Item()
-        root.append_row(Playlists())
-        root.append_row(Artists())
-        root.append_row(Albums())
-        root.append_row(Compilations())
-        root.append_row(AllSongs())
-        root.append_row(Genres())
-        root.append_row(Composers())
-        root.append_row(Directories())
-        root.has_children = True
+
         database_view = ItemView()
         splitter.addWidget(database_view)
-        database_model = ItemModel(client, root)
+        database_model = DatabaseModel(client)
+        database_model.append_row(Playlists())
+        database_model.append_row(Artists())
+        database_model.append_row(Albums())
+        database_model.append_row(Compilations())
+        database_model.append_row(AllSongs())
+        database_model.append_row(Genres())
+        database_model.append_row(Composers())
+        database_model.append_row(Directories())
         database_view.setModel(database_model)
         database_view.setDragEnabled(True)
         database_view.doubleClicked.connect(database_model.handleDoubleClick)
@@ -320,6 +319,15 @@ class ItemModel(QAbstractItemModel):
 
     def invalidate_server(self):
         self.server_updated.emit()
+
+class DatabaseModel(ItemModel):
+    def __init__(self, client, parent=None):
+        root = Item()
+        root.has_children = True
+        super(DatabaseModel, self).__init__(client, root, parent)
+    
+    def columnCount(self, parent_index=QModelIndex()):
+        return 1
 
 class PlaylistModel(ItemModel):
     def __init__(self, client, root, parent_index=None):
