@@ -584,13 +584,6 @@ class Item(object):
         return cls.title(song).lower()
 
     @classmethod
-    def album_key(cls, song):
-        """
-        Returns the sorting key for the song. In the context of its album.
-        """
-        return song['track'] if 'track' in song else cls.title(song).lower()
-
-    @classmethod
     def time_str(cls, dt):
         """
         Given a delta of time, returns a formatted string
@@ -676,6 +669,12 @@ class ExpandableItem(Item):
     @classmethod
     def match_tag(cls, song, tag, value):
         return tag in song and song[tag] == value
+    
+    @classmethod
+    def sorted_album(cls, songs):
+        track = lambda song: song['track'] if 'track' in song else cls.title(song)
+        disc = lambda song: song['disc'] if 'disc' in song else None
+        return [AlbumSong(song) for song in sorted(sorted(songs, key=track), key=disc)]
 
 class AllSongs(ExpandableItem):
     """
@@ -734,8 +733,7 @@ class ArtistAlbum(ExpandableItem):
         self.__album = album
     
     def fetch_more(self, client):
-        # This should be sorted. By disc number. Then by track number.
-        return [AlbumSong(song) for song in client.find('album', self.__album) if 'artist' in song and song['artist'] == self.__artist]
+        return self.sorted_album(song for song in client.find('album', self.__album) if 'artist' in song and song['artist'] == self.__artist)
 
 class Albums(ExpandableItem):
     """
@@ -758,8 +756,7 @@ class Album(ExpandableItem):
         self.__album = album
     
     def fetch_more(self, client):
-        # Should be sorted by disc number, then by track number.
-        return [AlbumSong(song) for song in client.find('album', self.__album)]
+        return self.sorted_album(client.find('album', self.__album))
 
 class Compilations(ExpandableItem):
     """
@@ -781,9 +778,8 @@ class Compilation(ExpandableItem):
         super(Compilation, self).__init__(artist, 'folder-sound')
         self.__artist = artist
     
-    def fetch_more(self, client):
-        # Should be sorted by disc number, then by track number.
-        return [AlbumSong(song) for song in client.find('albumartist', self.__artist)]
+    def fetch_more(self, client): 
+        return self.sorted_album(client.find('albumartist', self.__artist))
 
 class Genres(ExpandableItem):
     """
@@ -846,8 +842,7 @@ class GenreArtistAlbum(ExpandableItem):
         
     def fetch_more(self, client):
         album_songs = client.find('album', self.__album)
-        valid_songs = (song for song in album_songs if 'genre' in song and self.__is_valid(song))
-        return [AlbumSong(song) for song in valid_songs]
+        return self.sorted_album(song for song in album_songs if 'genre' in song and self.__is_valid(song))
     
     def __is_valid(self, song):
         return self.match_tag(song, 'genre', self.__genre) and self.match_tag(song, 'artist', self.__artist)
@@ -889,7 +884,7 @@ class ComposerAlbum(ExpandableItem):
         self.__album = album
     
     def fetch_more(self, client):
-        return [AlbumSong(song) for song in client.find('album', self.__album) if self.match_tag(song, 'composer', self.__composer)]
+        return self.sorted_album(song for song in client.find('album', self.__album) if self.match_tag(song, 'composer', self.__composer))
 
 class Directories(ExpandableItem):
     """
