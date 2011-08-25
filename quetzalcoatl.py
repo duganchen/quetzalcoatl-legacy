@@ -14,7 +14,7 @@ from sys import argv, exit
 from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
 from PyKDE4.kdeui import KAction, KApplication, KIcon, KMainWindow
 from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray, QDataStream, QIODevice, QMimeData, QModelIndex, QObject, QSize, Qt
-from PyQt4.QtGui import QFont, QIcon, QSplitter, QTreeView, QVBoxLayout, QWidget
+from PyQt4.QtGui import QFont, QIcon, QKeySequence, QSplitter, QTreeView, QVBoxLayout, QWidget
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 from socket import error
@@ -32,8 +32,8 @@ from datetime import timedelta
 # Composers
 # Audiobooks
 
-# TO DO: Sorting tracks in an album should take disc numbers into account.
-# Sorting of tags and random songs should be case insensitive.
+# The play/pause button on both of my multimedia keyboards is Qt.Key_MediaPlay, not
+# Qt.Key_MediaTogglePlayPause.
 
 def main():
     appName = "Quetzalcoatl"
@@ -67,31 +67,43 @@ class UI(KMainWindow):
         layout = QVBoxLayout()
         centralWidget.setLayout(layout)
 
-        toolBar = self.toolBar('ToolBar')
+        self.__toolbar = self.toolBar('ToolBar')
         
-        toolBar.setToolBarsEditable(False)
-        toolBar.setToolBarsLocked(True)
-        toolBar.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.__toolbar.setToolBarsEditable(False)
+        self.__toolbar.setToolBarsLocked(True)
+        self.__toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly)
 
-        stop = KAction(KIcon('media-playback-stop'), 'Stop', self)
-        toolBar.addAction(stop)
+        self.__stop_action = KAction(KIcon('media-playback-stop'), 'Stop', self)
+        self.__stop_action.setShortcut(QKeySequence(Qt.Key_MediaStop))
+        self.__stop_action.triggered.connect(self.__stop)
+        self.__toolbar.addAction(self.__stop_action)
 
-        play_pause = KAction(KIcon('media-playback-start'), 'Play', self)
-        toolBar.addAction(play_pause)
+        self.__play_action = KAction(KIcon('media-playback-start'), 'Play', self)
+        self.__play_action.setShortcut(QKeySequence(Qt.Key_MediaPlay))
+        self.__play_action.triggered.connect(self.__play)
+        self.__toolbar.addAction(self.__play_action)
 
-        skip_backward = KAction(KIcon('media-skip-backward'), 'Previous', self)
-        toolBar.addAction(skip_backward)
+        self.__pause_action = KAction(KIcon('media-playback-pause'), 'Pause', self)
+        self.__pause_action.setShortcut(QKeySequence(Qt.Key_MediaPause))
+        self.__pause_action.triggered.connect(self.__pause)
 
-        skip_forward = KAction(KIcon('media-skip-forward'), 'Next', self)
-        toolBar.addAction(skip_forward)
+        self.__skip_backward_action = KAction(KIcon('media-skip-backward'), 'Previous', self)
+        self.__skip_backward_action.setShortcut(QKeySequence(Qt.Key_MediaPrevious))
+        self.__skip_backward_action.triggered.connect(self.__skip_backward)
+        self.__toolbar.addAction(self.__skip_backward_action)
 
-        toolBar.addSeparator()
+        self.__skip_forward_action = KAction(KIcon('media-skip-forward'), 'Next', self)
+        self.__skip_forward_action.setShortcut(QKeySequence(Qt.Key_MediaNext))
+        self.__skip_forward_action.triggered.connect(self.__skip_forward)
+        self.__toolbar.addAction(self.__skip_forward_action)
+
+        self.__toolbar.addSeparator()
 
         shuffle = KAction(KIcon('media-playlist-shuffle'), 'Shuffle', self)
-        toolBar.addAction(shuffle)
+        self.__toolbar.addAction(shuffle)
 
         repeat = KAction(KIcon('media-playlist-repeat'), '', self)
-        toolBar.addAction(repeat)
+        self.__toolbar.addAction(repeat)
 
         splitter = QSplitter()
         layout.addWidget(splitter)
@@ -129,6 +141,23 @@ class UI(KMainWindow):
         self.poller.playlist_changed.connect(playlist_model.set_playlist)
         self.poller.song_id_changed.connect(playlist_model.set_songid)
         playlist_model.server_updated.connect(self.poller.poll)
+    
+    def __stop(self):
+        print 'stopping'
+    
+    def __play(self):
+        self.__toolbar.removeAction(self.__play_action)
+        self.__toolbar.insertAction(self.__skip_backward_action, self.__pause_action)
+    
+    def __pause(self):
+        self.__toolbar.removeAction(self.__pause_action)
+        self.__toolbar.insertAction(self.__skip_backward_action, self.__play_action)
+    
+    def __skip_backward(self):
+        print 'skipping backward'
+
+    def __skip_forward(self):
+        print 'skipping forward'
 
 
 class ItemView(QTreeView):
