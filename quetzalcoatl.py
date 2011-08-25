@@ -456,6 +456,12 @@ class Item(object):
             return self.__child_items[row]
         except IndexError:
             return None
+    
+    def children(self):
+        """
+        Returns an iterator for the children.
+        """
+        return self.__child_items.__iter__()
 
     @property
     def row_count(self):
@@ -607,11 +613,21 @@ class Song(Item):
         self.icon = self.icons['audio-x-generic']
         self.has_children = False
         self.can_fetch_more = False
+        self.__label = self.title(self.raw_data).decode('utf-8')
 
     def data(self, index):
         if index.column() == 0:
-            return self.title(self.raw_data).decode('utf-8')
+            return self.__label
         return None
+    
+    @property
+    def raw_data(self):
+        return super(Song, self).raw_data
+    
+    @raw_data.setter
+    def raw_data(self, value):
+        super(Song, self).raw_data = value
+        self.__label = self.title(self.raw_data).decode('utf-8')
 
 class RandomSong(Song):
     """
@@ -640,6 +656,15 @@ class AlbumSong(Song):
     
     def __init__(self, song):
         super(AlbumSong, self).__init__(song)
+
+    def handleDoubleClick(self, client, callback):
+        """
+        Handles double clicks.
+
+        The callback gets called on completion.
+        """
+
+        callback()
 
 class ExpandableItem(Item):
     """
