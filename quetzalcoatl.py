@@ -126,6 +126,7 @@ class UI(KMainWindow):
         playlist_model = PlaylistModel(client, Item())
         playlist_view.setModel(playlist_model)
         self.poller.playlist_changed.connect(playlist_model.set_playlist)
+        self.poller.song_id_changed.connect(playlist_model.set_songid)
         playlist_model.server_updated.connect(self.poller.poll)
 
 
@@ -293,8 +294,9 @@ class ItemModel(QAbstractItemModel):
 
     def remove_rows(self, row, count):
         """
-        Removes count rows from the root,00 starting at row.
+        Removes count rows from the root, starting at row.
         """
+        
         self.beginRemoveRows(QModelIndex(), row, row + count - 1)
         self.__root.remove_rows(row, count)
         self.endRemoveRows()
@@ -330,11 +332,13 @@ class DatabaseModel(ItemModel):
 class PlaylistModel(ItemModel):
     def __init__(self, client, root, parent_index=None):
         super(PlaylistModel, self).__init__(client, root, parent_index)
+        self.__songid = None
 
     def set_playlist(self, playlist, length):
+        print 'length: {0}'.format(length)
         old_length = self.rowCount()
         if length < old_length:
-            self.remove_rows(old_length, length - old_length + 1)
+            self.remove_rows(length, old_length - length + 1)
 
         for song in playlist:
             if song['pos'] < old_length:
@@ -390,13 +394,15 @@ class PlaylistModel(ItemModel):
         return mime_data
 
     def data(self, index, role=Qt.DisplayRole):
-        if role == Qt.FontRole:
+        if role == Qt.FontRole and index.internalPointer().raw_data['id'] == self.__songid:
             font = QFont()
             font.setBold(True)
             return font
-
         else:
             return super(PlaylistModel, self).data(index, role)
+    
+    def set_songid(self, value):
+        self.__songid = value
 
 class Item(object):
     """ A model item. """
@@ -632,7 +638,7 @@ class RandomSong(Song):
     def __init__(self, song):
         super(RandomSong, self).__init__(song)
 
-    def handleDoubleClick(self, client, callback):
+    def handleDoubleClick(self, client):
         """
         Reimplementation
         """
@@ -660,6 +666,12 @@ class AlbumSong(Song):
 
         The callback gets called on completion.
         """
+        
+        try:
+            client.clear()
+        except Exception as e:
+            print str(e)
+            return False
         
         for uri in (song.raw_data['file'] for song in self.parent.children):
             try:
@@ -949,6 +961,7 @@ class PlaylistItem(Item):
     @property
     def icon(self):
         return self.icons['audio-x-generic']
+    
 
 class Poller(QObject):
 
@@ -961,7 +974,6 @@ class Poller(QObject):
     random_changed = pyqtSignal(bool)
     state_changed = pyqtSignal(str)
     time_changed = pyqtSignal(int)
-    song_id_exists_changed = pyqtSignal(int)
     song_id_changed = pyqtSignal(int)
 
     def __init__(self, client, parent=None):
@@ -1001,9 +1013,10 @@ class Poller(QObject):
             self.time_changed.emit(status['time'])
             
         if self.__is_changed(status, 'songid'):
-            self.song_id_exists_changed.emit('songid' in status)
             if 'songid' in status:
                 self.song_id_changed.emit(status['songid'])
+            else:
+                self.song_id_changed.emit(None)
 
         if 'playlist' in status:
             if 'playlist' in self.__status:
@@ -1036,7 +1049,7 @@ class Poller(QObject):
         self.repeat_changed.emit(False)
         self.random_changed.emit(False)
         self.state_changed.emit('STOP')
-        self.song_id_exists_changed.emit(False)
+        self.song_id_changed.emit(None)
 
 
 class Client(QObject):
