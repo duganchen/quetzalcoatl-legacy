@@ -315,12 +315,8 @@ class ItemModel(QAbstractItemModel):
 
         Defers to the item under the cursor.
         """
-        self.itemFromIndex(index).handleDoubleClick(self.__client,
-                self.invalidate_server)
-
-
-    def invalidate_server(self):
-        self.server_updated.emit()
+        if self.itemFromIndex(index).handleDoubleClick(self.__client):
+            self.server_updated.emit()
 
 class DatabaseModel(ItemModel):
     def __init__(self, client, parent=None):
@@ -457,6 +453,7 @@ class Item(object):
         except IndexError:
             return None
     
+    @property
     def children(self):
         """
         Returns an iterator for the children.
@@ -569,15 +566,14 @@ class Item(object):
 
         return []
 
-    def handleDoubleClick(self, client, callback):
+    def handleDoubleClick(self, client):
         """
         Handles double clicks.
 
-        The callback gets called on completion.
+        Returns True the server information needs to be refreshed.
         """
-
-        callback()
-
+        
+        return False
 
     @classmethod
     def title(cls, song):
@@ -643,9 +639,10 @@ class RandomSong(Song):
 
         try:
             client.playid(client.addid(self.raw_data['file']))
-            callback()
         except Exception as e:
             print str(e)
+        
+        return True
 
 class AlbumSong(Song):
     """
@@ -657,14 +654,27 @@ class AlbumSong(Song):
     def __init__(self, song):
         super(AlbumSong, self).__init__(song)
 
-    def handleDoubleClick(self, client, callback):
+    def handleDoubleClick(self, client):
         """
         Handles double clicks.
 
         The callback gets called on completion.
         """
-
-        callback()
+        
+        for uri in (song.raw_data['file'] for song in self.parent.children):
+            try:
+                songid = client.addid(uri)
+            except Exception as e:
+                print str(e)
+                return False
+            
+            if uri == self.raw_data['file']:
+                try:
+                    client.playid(songid)
+                except Exception as e:
+                    print str(e)
+                    return False
+        return True
 
 class ExpandableItem(Item):
     """
