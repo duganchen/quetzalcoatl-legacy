@@ -124,6 +124,7 @@ class UI(KMainWindow):
         self.poller = Poller(client)
         database_model.server_updated.connect(self.poller.poll)
         playlist_model = PlaylistModel(client, Item())
+        playlist_view.doubleClicked.connect(playlist_model.handleDoubleClick)
         playlist_view.setModel(playlist_model)
         self.poller.playlist_changed.connect(playlist_model.set_playlist)
         self.poller.song_id_changed.connect(playlist_model.set_songid)
@@ -335,7 +336,6 @@ class PlaylistModel(ItemModel):
         self.__songid = None
 
     def set_playlist(self, playlist, length):
-        print 'length: {0}'.format(length)
         old_length = self.rowCount()
         if length < old_length:
             self.remove_rows(length, old_length - length + 1)
@@ -961,6 +961,10 @@ class PlaylistItem(Item):
     @property
     def icon(self):
         return self.icons['audio-x-generic']
+    
+    def handleDoubleClick(self, client):
+        client.playid(self.raw_data['id'])
+        return True
     
 
 class Poller(QObject):
