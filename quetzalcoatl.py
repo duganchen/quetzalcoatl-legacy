@@ -107,11 +107,11 @@ class UI(KMainWindow):
 
         splitter = QSplitter()
         layout.addWidget(splitter)
-        client = Client({'host': 'localhost', 'port': 6600})
+        self.__client = Client({'host': 'localhost', 'port': 6600})
 
         database_view = ItemView()
         splitter.addWidget(database_view)
-        database_model = DatabaseModel(client)
+        database_model = DatabaseModel(self.__client)
         database_model.append_row(Playlists())
         database_model.append_row(Artists())
         database_model.append_row(Albums())
@@ -133,31 +133,38 @@ class UI(KMainWindow):
         splitter.addWidget(playlist_view)
 
         # Connecting signals doesn't keep it from being released.
-        self.poller = Poller(client)
-        database_model.server_updated.connect(self.poller.poll)
-        playlist_model = PlaylistModel(client, Item())
+        self.__poller = Poller(self.__client)
+        database_model.server_updated.connect(self.__poller.poll)
+        playlist_model = PlaylistModel(self.__client, Item())
         playlist_view.doubleClicked.connect(playlist_model.handleDoubleClick)
         playlist_view.setModel(playlist_model)
-        self.poller.playlist_changed.connect(playlist_model.set_playlist)
-        self.poller.song_id_changed.connect(playlist_model.set_songid)
-        playlist_model.server_updated.connect(self.poller.poll)
+        self.__poller.playlist_changed.connect(playlist_model.set_playlist)
+        self.__poller.song_id_changed.connect(playlist_model.set_songid)
+        playlist_model.server_updated.connect(self.__poller.poll)
     
     def __stop(self):
-        print 'stopping'
+        self.__client.stop()
+        self.__poller.poll()
     
     def __play(self):
+        self.__client.play()
+        self.__poller.poll()
         self.__toolbar.removeAction(self.__play_action)
         self.__toolbar.insertAction(self.__skip_backward_action, self.__pause_action)
     
     def __pause(self):
+        self.__client.pause()
+        self.__poller.poll()
         self.__toolbar.removeAction(self.__pause_action)
         self.__toolbar.insertAction(self.__skip_backward_action, self.__play_action)
     
     def __skip_backward(self):
-        print 'skipping backward'
+        self.__client.previous()
+        self.__poller.poll()
 
     def __skip_forward(self):
-        print 'skipping forward'
+        self.__client.next()
+        self.__poller.poll()
 
 
 class ItemView(QTreeView):
@@ -349,6 +356,11 @@ class ItemModel(QAbstractItemModel):
         """
         if self.itemFromIndex(index).handleDoubleClick(self.__client):
             self.server_updated.emit()
+    
+    @property
+    def children(self):
+        """ Returns an iterator for the children. """
+        return self.__root.children
 
 class DatabaseModel(ItemModel):
     def __init__(self, client, parent=None):
@@ -431,7 +443,20 @@ class PlaylistModel(ItemModel):
             return super(PlaylistModel, self).data(index, role)
     
     def set_songid(self, value):
+        # OH CRAP. This needs to emit the dataChanged() twice.
+        
+        if self.__songid == value:
+            return
+        
+        old_id = self.__songid
         self.__songid = value
+        
+        for row, song in enumerate(self.children):
+            
+            # Clear the old song and bold the new one.
+            if song.raw_data['id'] == old_id or song.raw_data['id'] == self.__songid:
+                self.dataChanged.emit(self.index(row, 0), self.index(row, 1))
+
 
 class Item(object):
     """ A model item. """
