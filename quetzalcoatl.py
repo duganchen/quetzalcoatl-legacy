@@ -13,8 +13,8 @@ setapi("QUrl", 2)
 from sys import argv, exit
 from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
 from PyKDE4.kdeui import KAction, KApplication, KIcon, KMainWindow
-from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray, QDataStream, QIODevice, QMimeData, QModelIndex, QObject, QSize, Qt
-from PyQt4.QtGui import QFont, QIcon, QKeySequence, QSplitter, QTreeView, QVBoxLayout, QWidget
+from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray, QDataStream, QIODevice, QMimeData, QModelIndex, QObject, QSize, Qt, QTimer
+from PyQt4.QtGui import QFont, QHBoxLayout, QIcon, QKeySequence, QLabel, QSlider, QSplitter, QTreeView, QVBoxLayout, QWidget
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 from socket import error
@@ -104,8 +104,8 @@ class UI(KMainWindow):
 
         repeat = KAction(KIcon('media-playlist-repeat'), '', self)
         self.__toolbar.addAction(repeat)
-
         splitter = QSplitter()
+        layout.addWidget(QSlider(Qt.Horizontal))
         layout.addWidget(splitter)
         self.__client = Client({'host': 'localhost', 'port': 6600})
 
@@ -141,6 +141,21 @@ class UI(KMainWindow):
         self.__poller.playlist_changed.connect(playlist_model.set_playlist)
         self.__poller.song_id_changed.connect(playlist_model.set_songid)
         playlist_model.server_updated.connect(self.__poller.poll)
+        
+        self.__status_bar = self.statusBar()
+        self.__combined_time = QLabel()
+        self.__status_bar.addPermanentWidget(self.__combined_time)
+        
+        self.__timer = QTimer()
+        self.__timer.timeout.connect(self.__poller.poll)
+        self.__timer.setInterval(1000)
+        self.__timer.start()
+        
+        self.__state = 'STOP'
+        
+        self.__poller.state_changed.connect(self.__set_state)
+        self.__poller.time_changed.connect(self.__set_time)
+        self.__poller.poll()
     
     def __stop(self):
         self.__client.stop()
@@ -149,14 +164,10 @@ class UI(KMainWindow):
     def __play(self):
         self.__client.play()
         self.__poller.poll()
-        self.__toolbar.removeAction(self.__play_action)
-        self.__toolbar.insertAction(self.__skip_backward_action, self.__pause_action)
     
     def __pause(self):
         self.__client.pause()
         self.__poller.poll()
-        self.__toolbar.removeAction(self.__pause_action)
-        self.__toolbar.insertAction(self.__skip_backward_action, self.__play_action)
     
     def __skip_backward(self):
         self.__client.previous()
@@ -165,7 +176,27 @@ class UI(KMainWindow):
     def __skip_forward(self):
         self.__client.next()
         self.__poller.poll()
-
+    
+    def __set_time(self, elapsed, total):
+        if self.__state != 'stop':
+            self.__status_bar.showMessage('{0}/{1}'.format(Item.time_str(elapsed), Item.time_str(total)))
+    
+    def __set_state(self, state):
+        if state != self.__state:
+            self.__state = state
+            actions = self.__toolbar.actions()
+    
+            if self.__state == 'stop':
+                self.__status_bar.showMessage('')
+            
+            if self.__state == 'play' and  self.__play_action in actions:
+                self.__toolbar.removeAction(self.__play_action)
+                self.__toolbar.insertAction(self.__skip_backward_action, self.__pause_action)
+            if self.__state == 'pause' or state == 'stop' and self.__pause_action in actions:
+                self.__toolbar.removeAction(self.__pause_action)
+                self.__toolbar.insertAction(self.__skip_backward_action, self.__play_action)
+        
+        
 
 class ItemView(QTreeView):
     
@@ -266,29 +297,6 @@ class ItemModel(QAbstractItemModel):
             return self.__root
         return index.internalPointer()
     
-    def headerData(self, section, orientation, role=Qt.DisplayRole):
-        
-        if self.__header_is_valid(section, orientation, role):
-            return self.__headers[section]
-        return None
-    
-    def setHeaderData(self, section, orientation, value, role=Qt.EditRole):
-        if self.__header_is_valid(section, orientation, role):
-            self.__headers[section] = value
-            self.headerDataChanged.emit(orientation, section, section)
-            return True
-        return False
-    
-    def __header_is_valid(self, section, orientation, role):
-        
-        if section > len(self.__headers) - 1:
-            return False
-        if orientation != Qt.Horizontal:
-            return False
-        if role != Qt.DisplayRole:
-            return False
-        return True
-    
     def canFetchMore(self, parent_index):
         
         parent = self.itemFromIndex(parent_index)
@@ -375,6 +383,7 @@ class PlaylistModel(ItemModel):
     def __init__(self, client, root, parent_index=None):
         super(PlaylistModel, self).__init__(client, root, parent_index)
         self.__songid = None
+        self.__headers = ('Name', 'Time')
 
     def set_playlist(self, playlist, length):
         old_length = self.rowCount()
@@ -456,6 +465,23 @@ class PlaylistModel(ItemModel):
             # Clear the old song and bold the new one.
             if song.raw_data['id'] == old_id or song.raw_data['id'] == self.__songid:
                 self.dataChanged.emit(self.index(row, 0), self.index(row, 1))
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        
+        if self.__header_is_valid(section, orientation, role):
+            return self.__headers[section]
+        return None
+
+    def __header_is_valid(self, section, orientation, role):
+        
+        if section > len(self.__headers) - 1:
+            return False
+        if orientation != Qt.Horizontal:
+            return False
+        if role != Qt.DisplayRole:
+            return False
+        return True
+    
 
 
 class Item(object):
@@ -1031,7 +1057,7 @@ class Poller(QObject):
     repeat_changed = pyqtSignal(bool)
     random_changed = pyqtSignal(bool)
     state_changed = pyqtSignal(str)
-    time_changed = pyqtSignal(int)
+    time_changed = pyqtSignal(timedelta, timedelta)
     song_id_changed = pyqtSignal(int)
 
     def __init__(self, client, parent=None):
@@ -1068,7 +1094,8 @@ class Poller(QObject):
 
         # There is no else. If there is no time, the state is STOP.
         if self.__is_changed(status, 'time') and 'time' in status:
-            self.time_changed.emit(status['time'])
+            elapsed, total = status['time']
+            self.time_changed.emit(elapsed, total)
             
         if self.__is_changed(status, 'songid'):
             if 'songid' in status:
