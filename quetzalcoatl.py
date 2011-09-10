@@ -40,14 +40,13 @@ from datetime import timedelta
 # Okay, here's the current do-do list:
 # * make the repeat and shuffle buttons work
 # * get dragging and dropping from the library to the playlist to work again
-# * do the Directory navigation node
 # * playlists (saving, renaming, deleting)
 # * get the configuration dialog working again (authentication, volume, single, consume, etc)
 # * album art downloading
 # * refreshing the server
 # * test hell out of disconnecting and reconnecting
 # * make sure alphabetical sorting is case-insensitive
-
+# * make sure playlists aren't listed in the directory listings.
 
 # Last.fm API key. Base64-encoded.
 LAST_FM_KEY_BASE64 = 'Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk='
@@ -136,7 +135,7 @@ class UI(KMainWindow):
         database_model.append_row(AllSongs())
         database_model.append_row(Genres())
         database_model.append_row(Composers())
-        database_model.append_row(Directories())
+        database_model.append_row(Directories('/', 'drive-harddisk'))
         database_view.setModel(database_model)
         database_view.setDragEnabled(True)
         database_view.doubleClicked.connect(database_model.handleDoubleClick)
@@ -1142,11 +1141,20 @@ class Directories(ExpandableItem):
     The Directories node.
     """
 
-    def __init__(self):
-        super(Directories, self).__init__('Directories', 'drive-harddisk')
+    def __init__(self, root, icon):
+        super(Directories, self).__init__(root, icon)
+        self.__root = root
     
     def fetch_more(self, client):
-        return []
+        listing = client.lsinfo(self.__root)
+
+        directories = [Directories(directory, 'folder-sound') for directory in sorted((x['directory'] for x in listing if 'directory' in x),
+                     key=str.lower)]
+
+        files = [RandomSong(song) for song in sorted((x for x in listing if 'file' in x), key=self.alphabetical_order)]
+        
+        directories.extend(files)
+        return directories
 
 
 class PlaylistItem(Item):
