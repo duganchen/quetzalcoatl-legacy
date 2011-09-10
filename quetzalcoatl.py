@@ -45,10 +45,12 @@ from datetime import timedelta
 # * playlists (saving, renaming, deleting)
 # * get the configuration dialog working again (authentication, volume, single, consume, etc)
 # * album art downloading
+# * refreshing the server
+# * test hell out of disconnecting and reconnecting
 
 # Nodes to add:
 # Artists->____->All Songs DONE
-# Genres->____->All Songs
+# Genres->____->All Songs DONE
 # Genres->____->Compilations
 # Genres->____->All Songs
 # Composers->____->All Songs
@@ -689,7 +691,7 @@ class Item(object):
         return splitext(basename(song["file"]))[0]
 
     @classmethod
-    def random_key(cls, song):
+    def alphabetical_order(cls, song):
         return cls.title(song).lower()
 
     @classmethod
@@ -834,7 +836,7 @@ class AllSongs(ExpandableItem):
 
     def fetch_more(self, client):
         songs = (x for x in client.listallinfo() if 'file' in x)
-        return [RandomSong(x) for x in sorted(songs, key=self.random_key)]
+        return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
 
 class Playlists(ExpandableItem):
     """
@@ -885,7 +887,7 @@ class ArtistSongs(ExpandableItem):
     
     def fetch_more(self, client):
         songs = (x for x in client.find('artist', self.__artist))
-        return [RandomSong(x) for x in sorted(songs, key=self.random_key)]
+        return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
 
 class ArtistAlbum(ExpandableItem):
     
@@ -967,14 +969,29 @@ class Genre(ExpandableItem):
         self.__genre = genre
     
     def fetch_more(self, client):
+        works = [GenreSongs(self.__genre)]
         raw_artists = (song['artist'] for song in client.find('genre', self.__genre) if self.__is_valid(song))
         artists = sorted(set(raw_artists))
-        return [GenreArtist(self.__genre, artist) for artist in artists]
+        works.extend([GenreArtist(self.__genre, artist) for artist in artists])
+        return works
 
     @classmethod
     def __is_valid(self, song):
         return self.has_tag(song, 'artist') and self.has_tag(song, 'album')
+
+class GenreSongs(ExpandableItem):
+    """
+    Genres->Genre->All Songs
+    """
+    def __init__(self, genre):
+        super(GenreSongs, self).__init__('All Songs', 'server-database')
+        self.__genre = genre
     
+    def fetch_more(self, client):
+        songs = (x for x in client.find('genre', self.__genre))
+        return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
+
+
 class GenreArtist(ExpandableItem):
     """
     Genres -> Genre -> Artist
