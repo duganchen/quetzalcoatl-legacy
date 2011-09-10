@@ -18,7 +18,6 @@ from PyQt4.QtGui import QFont, QHBoxLayout, QIcon, QKeySequence, QLabel, QSlider
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 import socket
-from datetime import timedelta
 
 
 # The root menu of my iPod video 5.5G is:
@@ -38,17 +37,21 @@ from datetime import timedelta
 # TO DO:
 
 # Okay, here's the current do-do list:
-# * hook up the slider
+
+# * Song times in the playlist.
 # * get dragging and dropping from the library to the playlist to work again
+# * double-clicking on a song (any of them) should take selections into account (if there are any).
 # * removing items from the playlist
 # * playlists (saving, renaming, deleting)
 # * get the configuration dialog working again (authentication, volume, single, consume, etc)
 # * album art downloading
 # * refreshing the server
-# * test hell out of disconnecting and reconnecting
+
 # * make sure alphabetical sorting is case-insensitive
 # * make sure playlists aren't listed in the directory listings.
-# * double-clicking on a song (any of them) should take selections into account (if there are any).
+# * test the hell out of losing the connection to the server
+# * make sure that events are consistent even when another client is chaning the server state.
+
 
 # Last.fm API key. Base64-encoded.
 LAST_FM_KEY_BASE64 = 'Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk='
@@ -80,58 +83,78 @@ class UI(KMainWindow):
         self.setWindowIcon(KIcon("multimedia-player"))
         self.resize(800, 600)
         self.setWindowTitle('Quetzalcoatl')
+        
+        client = Client({'host': 'localhost', 'port': 6600})
+        controller = UIController(client, self)
+        poller = Poller(client, self)
+        controller.server_updated.connect(poller.poll)
+        poller.state_changed.connect(controller.set_state)
+        poller.state_changed.connect(self.__set_state)
+        poller.time_changed.connect(self.__set_time)
+        
+#        poller.shuffle_changed.connect(controller.set_shuffle)
+#        poller.repeat_changed.connect(controller.set_repeat)
+
         centralWidget = QWidget(self)
         self.setCentralWidget(centralWidget)
         layout = QVBoxLayout()
         centralWidget.setLayout(layout)
         
-        self.__shuffle = False
-        self.__repeat = False
-
         self.__toolbar = self.toolBar('ToolBar')
         
         self.__toolbar.setToolBarsEditable(False)
         self.__toolbar.setToolBarsLocked(True)
         self.__toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly)
 
-        self.__stop_action = KAction(KIcon('media-playback-stop'), 'Stop', self)
-        self.__stop_action.setShortcut(QKeySequence(Qt.Key_MediaStop))
-        self.__stop_action.triggered.connect(self.__stop)
-        self.__toolbar.addAction(self.__stop_action)
+        stop_action = KAction(KIcon('media-playback-stop'), 'Stop', self)
+        stop_action.setShortcut(QKeySequence(Qt.Key_MediaStop))
+
+        stop_action.triggered.connect(controller.stop)
+        self.__toolbar.addAction(stop_action)
 
         self.__play_action = KAction(KIcon('media-playback-start'), 'Play', self)
         self.__play_action.setShortcut(QKeySequence(Qt.Key_MediaPlay))
-        self.__play_action.triggered.connect(self.__play)
+
+        self.__play_action.triggered.connect(controller.play)
         self.__toolbar.addAction(self.__play_action)
 
         self.__pause_action = KAction(KIcon('media-playback-pause'), 'Pause', self)
         self.__pause_action.setShortcut(QKeySequence(Qt.Key_MediaPause))
-        self.__pause_action.triggered.connect(self.__pause)
+
+        self.__pause_action.triggered.connect(controller.pause)
 
         self.__skip_backward_action = KAction(KIcon('media-skip-backward'), 'Previous', self)
         self.__skip_backward_action.setShortcut(QKeySequence(Qt.Key_MediaPrevious))
-        self.__skip_backward_action.triggered.connect(self.__skip_backward)
+        self.__skip_backward_action.triggered.connect(controller.skip_backward)
         self.__toolbar.addAction(self.__skip_backward_action)
 
-        self.__skip_forward_action = KAction(KIcon('media-skip-forward'), 'Next', self)
-        self.__skip_forward_action.setShortcut(QKeySequence(Qt.Key_MediaNext))
-        self.__skip_forward_action.triggered.connect(self.__skip_forward)
-        self.__toolbar.addAction(self.__skip_forward_action)
+        skip_forward_action = KAction(KIcon('media-skip-forward'), 'Next', self)
+        skip_forward_action.setShortcut(QKeySequence(Qt.Key_MediaNext))
+
+        skip_forward_action.triggered.connect(controller.skip_forward)
+        self.__toolbar.addAction(skip_forward_action)
 
         self.__toolbar.addSeparator()
 
-        self.shuffle = KToggleAction(KIcon('media-playlist-shuffle'), 'Shuffle', self)
-        self.shuffle.toggled.connect(self.setShuffle)
-        self.__toolbar.addAction(self.shuffle)
+        shuffle = KToggleAction(KIcon('media-playlist-shuffle'), 'Shuffle', self)
+        poller.shuffle_changed.connect(shuffle.setChecked)
+        shuffle.toggled.connect(controller.set_shuffle)
+        self.__toolbar.addAction(shuffle)
 
-        self.repeat = KToggleAction(KIcon('media-playlist-repeat'), 'Repeat', self)
-        self.repeat.toggled.connect(self.setRepeat)
-        self.__toolbar.addAction(self.repeat)
+        repeat = KToggleAction(KIcon('media-playlist-repeat'), 'Repeat', self)
+        poller.repeat_changed.connect(repeat.setChecked)
+        repeat.toggled.connect(controller.set_repeat)
+        self.__toolbar.addAction(repeat)
         
         splitter = QSplitter()
-        layout.addWidget(QSlider(Qt.Horizontal))
+        self.__slider = QSlider(Qt.Horizontal)
+        self.__slider.setTracking(False)
+        layout.addWidget(self.__slider)
+        self.__slider.sliderMoved.connect(controller.setElapsed)
+        self.__slider.sliderPressed.connect(self.__hold_slider)
+        self.__slider.sliderReleased.connect(controller.seekToElapsed)
+        self.__slider.sliderReleased.connect(self.__release_slider)
         layout.addWidget(splitter)
-        self.__client = Client({'host': 'localhost', 'port': 6600})
 
         database_view = QTreeView()
         database_view.setIconSize(QSize(34, 34))
@@ -140,7 +163,7 @@ class UI(KMainWindow):
         database_view.setDragEnabled(True)
         
         splitter.addWidget(database_view)
-        database_model = DatabaseModel(self.__client)
+        database_model = DatabaseModel(client)
         database_model.append_row(Playlists())
         database_model.append_row(Artists())
         database_model.append_row(Albums())
@@ -157,92 +180,146 @@ class UI(KMainWindow):
         
         splitter.addWidget(playlist_view)
 
-        # Connecting signals doesn't keep it from being released.
-        self.__poller = Poller(self.__client)
-        database_model.server_updated.connect(self.__poller.poll)
-        playlist_model = PlaylistModel(self.__client, Item())
+        database_model.server_updated.connect(poller.poll)
+        playlist_model = PlaylistModel(client, Item())
         playlist_view.doubleClicked.connect(playlist_model.handleDoubleClick)
         playlist_view.setModel(playlist_model)
-        self.__poller.playlist_changed.connect(playlist_model.set_playlist)
-        self.__poller.song_id_changed.connect(playlist_model.set_songid)
-        playlist_model.server_updated.connect(self.__poller.poll)
+        poller.playlist_changed.connect(playlist_model.set_playlist)
+        poller.song_id_changed.connect(playlist_model.set_songid)
+        poller.song_id_changed.connect(controller.set_songid)
+        playlist_model.server_updated.connect(poller.poll)
         
         self.__status_bar = self.statusBar()
-        self.__combined_time = QLabel()
-        self.__status_bar.addPermanentWidget(self.__combined_time)
-        
-        self.__timer = QTimer()
-        self.__timer.timeout.connect(self.__poller.poll)
-        self.__timer.setInterval(1000)
-        self.__timer.start()
-        
-        self.__state = 'STOP'
-        
-        self.__poller.state_changed.connect(self.__set_state)
-        self.__poller.time_changed.connect(self.__set_time)
-        
-        self.__poller.shuffle_changed.connect(self.setShuffle)
-        self.__poller.repeat_changed.connect(self.setRepeat)
-        
+        combined_time = QLabel()
+        self.__status_bar.addPermanentWidget(combined_time)
+            
         playlist_model.playlist_changed.connect(playlist_view.resizeColumnsToContents)
         
-        self.__poller.poll()
+        self.__state = 'STOP'
+        self.__elapsed = 0
+        self.__total = 0
         
-    
-    def __stop(self):
-        self.__client.stop()
-        self.__poller.poll()
-    
-    def __play(self):
-        self.__client.play()
-        self.__poller.poll()
-    
-    def __pause(self):
-        self.__client.pause()
-        self.__poller.poll()
-    
-    def __skip_backward(self):
-        self.__client.previous()
-        self.__poller.poll()
 
-    def __skip_forward(self):
-        self.__client.next()
-        self.__poller.poll()
-    
+        timer = QTimer(self)
+        timer.timeout.connect(poller.poll)
+        timer.setInterval(1000)
+        poller.poll()
+        timer.start()
+        
+        self.__slider_is_held = False
+        
     def __set_time(self, elapsed, total):
-        if self.__state != 'stop':
+        if self.__state != 'STOP':
+            if self.__elapsed == elapsed and self.__total != total:
+                return
+        
             self.__status_bar.showMessage('{0}/{1}'.format(Item.time_str(elapsed), Item.time_str(total)))
+            
+            if not self.__slider_is_held:
+                if self.__total != total:
+                    self.__slider.setMaximum(total)
+                if self.__elapsed != elapsed:
+                    self.__slider.setSliderPosition(elapsed)
+            
+            self.__elapsed = elapsed
+            self.__total = total
     
     def __set_state(self, state):
+
         if state != self.__state:
             self.__state = state
             actions = self.__toolbar.actions()
     
             if self.__state == 'stop':
                 self.__status_bar.showMessage('')
+                self.__slider.setEnabled(False)
+                self.__slider.setSliderPosition(0)
             
             if self.__state == 'play' and  self.__play_action in actions:
                 self.__toolbar.removeAction(self.__play_action)
                 self.__toolbar.insertAction(self.__skip_backward_action, self.__pause_action)
+                self.__slider.setEnabled(True)
             if self.__state == 'pause' or state == 'stop' and self.__pause_action in actions:
                 self.__toolbar.removeAction(self.__pause_action)
                 self.__toolbar.insertAction(self.__skip_backward_action, self.__play_action)
+                self.__slider.setEnabled(True)
     
-    def setShuffle(self, checked):
-        if self.__shuffle != checked:
-            self.__shuffle = checked
-            self.shuffle.setChecked(checked)
-            self.__client.random(int(checked))
+    def __hold_slider(self):
+        self.__slider_is_held = True;
     
-    def setRepeat(self, checked):
-        if self.__repeat != checked:
-            self.__repeat = checked
-            self.repeat.setChecked(checked)
-            self.__client.repeat(int(checked))
+    def __release_slider(self):
+        self.__slider_is_held = False;
+
+class UIController(QObject):
+    """
+    The UI class's slots.
+    """
     
-    def sizePlaylist(self):
-        self.__playlist_view.resizeColumnToContents(0)
-        self.__playlist_view.resizeColumnToConents(0)
+    # To signal that we need to poll.
+    server_updated = pyqtSignal()
+
+    def __init__(self, client, parent = None):
+        super(UIController, self).__init__(parent)
+        self.__client = client
+        
+        self.__state = 'STOP'
+        self.__songid = None
+        self.__repeat = False
+        self.__shuffle = False
+        self.__elapsed = 0
+    
+    def set_songid(self, songid):
+        self.__songid = songid
+    
+    def setElapsed(self, value):
+        self.__elapsed = value
+    
+    def seekToElapsed(self):
+        if self.__songid is not None and self.__state != 'stop':
+            self.__client.seekid(self.__songid, self.__elapsed)
+            self.server_updated.emit()
+    
+    def set_repeat(self, value):
+        if value != self.__repeat:
+            self.__repeat = value
+            self.__client.repeat(int(value))
+            self.server_updated.emit()
+    
+    def set_shuffle(self, value):
+
+        if value != self.__shuffle:
+
+            self.__shuffle = value
+            self.__client.shuffle(int(value))
+            self.server_updated.emit()
+
+    def stop(self):
+        if self.__state != 'stop':
+            self.__client.stop()
+            self.server_updated.emit()
+    
+    def play(self):
+        if self.__state != 'play':
+            self.__client.play()
+            self.server_updated.emit()
+
+    def pause(self):
+        if self.__state != 'pause':
+            self.__client.pause()
+            self.server_updated.emit()
+    
+    def skip_backward(self):
+        self.__client.previous()
+        self.server_updated.emit()
+
+    def skip_forward(self):
+        self.__client.next()
+        self.server_updated.emit()
+    
+    def set_state(self, state):
+
+        if state != self.__state:
+            self.__state = state
         
 
 class PlaylistView(QTreeView):
@@ -514,7 +591,6 @@ class PlaylistModel(ItemModel):
             return super(PlaylistModel, self).data(index, role)
     
     def set_songid(self, value):
-        # OH CRAP. This needs to emit the dataChanged() twice.
         
         if self.__songid == value:
             return
@@ -527,6 +603,8 @@ class PlaylistModel(ItemModel):
             # Clear the old song and bold the new one.
             if song.raw_data['id'] == old_id or song.raw_data['id'] == self.__songid:
                 self.dataChanged.emit(self.index(row, 0), self.index(row, 1))
+        
+        self.playlist_changed.emit()
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         
@@ -736,12 +814,12 @@ class Item(object):
     @classmethod
     def time_str(cls, dt):
         """
-        Given a delta of time, returns a formatted string
+        Given a delta of time (in seconds), returns a formatted string
         representation.
         """
-        seconds = dt.seconds % 60
-        minutes = dt.seconds % 3600 / 60
-        hours = dt.seconds / 3600
+        seconds = dt % 60
+        minutes = dt % 3600 / 60
+        hours = dt / 3600
         
         if hours == 0 and minutes == 0:
             return '0:{0:02}'.format(seconds)
@@ -1237,7 +1315,7 @@ class Poller(QObject):
     repeat_changed = pyqtSignal(bool)
     shuffle_changed = pyqtSignal(bool)
     state_changed = pyqtSignal(str)
-    time_changed = pyqtSignal(timedelta, timedelta)
+    time_changed = pyqtSignal(int, int)
     song_id_changed = pyqtSignal(int)
 
     def __init__(self, client, parent=None):
@@ -1454,8 +1532,8 @@ class SanitizedClient(object):
         
         if ':' in value:
             tokens = value.split(':')
-            return tuple([timedelta(seconds=int(x)) for x in tokens])
-        return timedelta(seconds=int(value))
+            return tuple([int(x) for x in tokens])
+        return int(value)
     
     @classmethod
     def __sanitize_playlist(cls, value):
