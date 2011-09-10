@@ -35,6 +35,20 @@ from datetime import timedelta
 # The play/pause button on both of my multimedia keyboards is Qt.Key_MediaPlay, not
 # Qt.Key_MediaTogglePlayPause.
 
+# TO DO:
+
+# Okay, here's the current do-do list:
+# * restore the library navigation nodes that were present at one point ("All Albums", etc)
+# * make the repeat and shuffle buttons work
+# * get dragging and dropping from the library to the playlist to work again
+# * do the Directory navigation node
+# * playlists (saving, renaming, deleting)
+# * get the configuration dialog working again (authentication, volume, single, consume, etc)
+# * album art downloading
+
+# Last.fm API key. Base64-encoded.
+LAST_FM_KEY_BASE64 = 'Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk='
+
 def main():
     appName = "Quetzalcoatl"
     catalog = ""
@@ -835,8 +849,8 @@ class Artists(ExpandableItem):
         super(Artists, self).__init__('Artists', 'server-database')
     
     def fetch_more(self, client):
-        return [ArtistAlbums(artist) for artist in sorted(client.list('artist'))]
-
+        artists = (artist for artist in client.list('artist') if len(artist.strip()) > 0)
+        return [ArtistAlbums(artist) for artist in sorted(artists)]
 
 class ArtistAlbums(ExpandableItem):
     """
@@ -848,9 +862,9 @@ class ArtistAlbums(ExpandableItem):
         self.__artist = artist
     
     def fetch_more(self, client):
-        # To do: Have an "All Songs" folder
+        albums = (album for album in client.list('album', self.__artist) if len(album.strip()) > 0)
         return [ArtistAlbum(self.__artist, album)
-                for album in sorted(client.list('album', self.__artist))]
+                for album in sorted(albums)]
 
 class ArtistAlbum(ExpandableItem):
     
@@ -871,7 +885,8 @@ class Albums(ExpandableItem):
         super(Albums, self).__init__('Albums', 'server-database')
     
     def fetch_more(self, client):
-        return [Album(album) for album in sorted(client.list('album'))]
+        albums = (album for album in client.list('album') if len(album.strip()) > 0)
+        return [Album(album) for album in sorted(albums)]
 
 class Album(ExpandableItem):
     """
@@ -894,7 +909,8 @@ class Compilations(ExpandableItem):
         super(Compilations, self).__init__('Compilations', 'server-database')
     
     def fetch_more(self, client):
-        return [Compilation(artist) for artist in sorted(client.list('albumartist'))]
+        album_artists = (album_artist for album_artist in client.list('albumartist') if len(album_artist.strip()) > 0)
+        return [Compilation(artist) for artist in sorted(album_artists)]
 
 class Compilation(ExpandableItem):
     """
@@ -917,7 +933,8 @@ class Genres(ExpandableItem):
         super(Genres, self).__init__('Genres', 'server-database')
     
     def fetch_more(self, client):
-        return [Genre(genre) for genre in sorted(client.list('genre'))]
+        genres = (genre for genre in client.list('genre') if len(genre.strip()) > 0)
+        return [Genre(genre) for genre in sorted(genres)]
 
 class Genre(ExpandableItem):
     """
@@ -983,7 +1000,8 @@ class Composers(ExpandableItem):
         super(Composers, self).__init__('Composers', 'server-database')
     
     def fetch_more(self, client):
-        return [Composer(composer) for composer in sorted(client.list('composer'))]
+        composers = (composer for composer in client.list('composer') if len(composer.strip()) > 0)
+        return [Composer(composer) for composer in sorted(composers)]
 
 class Composer(ExpandableItem):
     """
@@ -1014,7 +1032,8 @@ class ComposerAlbum(ExpandableItem):
         return self.sorted_album(song for song in client.find('album', self.__album) if self.match_tag(song, 'composer', self.__composer))
 
 class Directories(ExpandableItem):
-    """
+    """ls
+    
     The Directories node.
     """
 
