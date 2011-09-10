@@ -47,6 +47,8 @@ from datetime import timedelta
 # * test hell out of disconnecting and reconnecting
 # * make sure alphabetical sorting is case-insensitive
 # * make sure playlists aren't listed in the directory listings.
+# * double-clicking on a song (any of them) should take selections into account (if there are any).
+# * put back the resizeColumnsToContent and have it only fire when the mouse is released. Like this: http://www.qtforum.org/post/57011/resize-event.html#post57011
 
 # Last.fm API key. Base64-encoded.
 LAST_FM_KEY_BASE64 = 'Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk='
@@ -135,7 +137,7 @@ class UI(KMainWindow):
         database_model.append_row(AllSongs())
         database_model.append_row(Genres())
         database_model.append_row(Composers())
-        database_model.append_row(Directories('/', 'drive-harddisk'))
+        database_model.append_row(Directory('/', 'drive-harddisk'))
         database_view.setModel(database_model)
         database_view.setDragEnabled(True)
         database_view.doubleClicked.connect(database_model.handleDoubleClick)
@@ -1136,19 +1138,21 @@ class ComposerAlbum(ExpandableItem):
     def fetch_more(self, client):
         return self.sorted_album(song for song in client.find('album', self.__album) if self.match_tag(song, 'composer', self.__composer))
 
-class Directories(ExpandableItem):
+class Directory(ExpandableItem):
     """
     The Directories node.
     """
 
     def __init__(self, root, icon):
-        super(Directories, self).__init__(root, icon)
+        super(Directory, self).__init__(root, icon)
         self.__root = root
+        if basename(root) != '':
+            self.raw_data = basename(root)
     
     def fetch_more(self, client):
         listing = client.lsinfo(self.__root)
 
-        directories = [Directories(directory, 'folder-sound') for directory in sorted((x['directory'] for x in listing if 'directory' in x),
+        directories = [Directory(directory, 'folder-sound') for directory in sorted((x['directory'] for x in listing if 'directory' in x),
                      key=str.lower)]
 
         files = [RandomSong(song) for song in sorted((x for x in listing if 'file' in x), key=self.alphabetical_order)]
