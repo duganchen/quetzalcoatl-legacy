@@ -38,7 +38,6 @@ from datetime import timedelta
 # TO DO:
 
 # Okay, here's the current do-do list:
-# * restore the library navigation nodes that were present at one point ("All Albums", etc)
 # * make the repeat and shuffle buttons work
 # * get dragging and dropping from the library to the playlist to work again
 # * do the Directory navigation node
@@ -49,12 +48,6 @@ from datetime import timedelta
 # * test hell out of disconnecting and reconnecting
 # * make sure alphabetical sorting is case-insensitive
 
-# Nodes to add:
-# Artists->____->All Songs DONE
-# Genres->____->All Songs DONE
-# Genres->____->Compilations DONE
-# Genres->____->All Songs
-# Composers->____->All Songs
 
 # Last.fm API key. Base64-encoded.
 LAST_FM_KEY_BASE64 = 'Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk='
@@ -1111,12 +1104,26 @@ class Composer(ExpandableItem):
         self.__composer = composer
     
     def fetch_more(self, client):
+        works = [ComposerSongs(self.__composer)]
         raw_albums = (song['album'] for song in client.find('composer', self.__composer) if self.__is_valid(song))
         albums = sorted(set(raw_albums))
-        return [ComposerAlbum(self.__composer, album) for album in albums]
+        works.extend([ComposerAlbum(self.__composer, album) for album in albums])
+        return works
     
     def __is_valid(self, song):
         return self.has_tag(song, 'album')
+
+class ComposerSongs(ExpandableItem):
+    """
+    Composers->Composer->All Songs
+    """
+    def __init__(self, composer):
+        super(ComposerSongs, self).__init__('All Songs', 'server-database')
+        self.__composer = composer
+    
+    def fetch_more(self, client):
+        songs = (x for x in client.find('composer', self.__composer))
+        return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
 
 class ComposerAlbum(ExpandableItem):
     """
