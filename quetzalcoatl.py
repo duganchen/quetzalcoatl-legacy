@@ -38,7 +38,6 @@ import socket
 
 # Okay, here's the current do-do list:
 
-# * Song times in the playlist.
 # * get dragging and dropping from the library to the playlist to work again
 # * double-clicking on a song (any of them) should take selections into account (if there are any).
 # * removing items from the playlist
