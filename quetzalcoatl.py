@@ -47,7 +47,7 @@ from datetime import timedelta
 # * album art downloading
 
 # Nodes to add:
-# Artists->____->All Songs
+# Artists->____->All Songs DONE
 # Genres->____->All Songs
 # Genres->____->Compilations
 # Genres->____->All Songs
@@ -60,7 +60,7 @@ def main():
     appName = "Quetzalcoatl"
     catalog = ""
     programName = ki18n("Quetzalcoatl")
-    version = "1.0"
+    version = "2.0"
     description = ki18n("mpd client")
     license = KAboutData.License_GPL
     copyright = ki18n("(c) 2009 Dugan Chen")
@@ -857,21 +857,35 @@ class Artists(ExpandableItem):
     
     def fetch_more(self, client):
         artists = (artist for artist in client.list('artist') if len(artist.strip()) > 0)
-        return [ArtistAlbums(artist) for artist in sorted(artists)]
+        return [Artist(artist) for artist in sorted(artists)]
 
-class ArtistAlbums(ExpandableItem):
+class Artist(ExpandableItem):
     """
-    The albums-per-Artists->Artist node.
+    Artists -> Artist
     """
 
     def __init__(self, artist):
-        super(ArtistAlbums, self).__init__(artist, 'folder-sound')
+        super(Artist, self).__init__(artist, 'folder-sound')
         self.__artist = artist
     
     def fetch_more(self, client):
+        works = [ArtistSongs(self.__artist)]
         albums = (album for album in client.list('album', self.__artist) if len(album.strip()) > 0)
-        return [ArtistAlbum(self.__artist, album)
-                for album in sorted(albums)]
+        works.extend([ArtistAlbum(self.__artist, album)
+                for album in sorted(albums)])
+        return works
+
+class ArtistSongs(ExpandableItem):
+    """
+    Artists->Artist->All Songs
+    """
+    def __init__(self, artist):
+        super(ArtistSongs, self).__init__('All Songs', 'server-database')
+        self.__artist = artist
+    
+    def fetch_more(self, client):
+        songs = (x for x in client.find('artist', self.__artist))
+        return [RandomSong(x) for x in sorted(songs, key=self.random_key)]
 
 class ArtistAlbum(ExpandableItem):
     
@@ -1039,8 +1053,7 @@ class ComposerAlbum(ExpandableItem):
         return self.sorted_album(song for song in client.find('album', self.__album) if self.match_tag(song, 'composer', self.__composer))
 
 class Directories(ExpandableItem):
-    """ls
-    
+    """
     The Directories node.
     """
 
