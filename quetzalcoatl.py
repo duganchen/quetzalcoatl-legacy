@@ -52,7 +52,7 @@ from datetime import timedelta
 # Nodes to add:
 # Artists->____->All Songs DONE
 # Genres->____->All Songs DONE
-# Genres->____->Compilations
+# Genres->____->Compilations DONE
 # Genres->____->All Songs
 # Composers->____->All Songs
 
@@ -1049,12 +1049,27 @@ class GenreArtist(ExpandableItem):
         self.__artist = artist
     
     def fetch_more(self, client):
+        works = [GenreArtistSongs(self.__genre, self.__artist)]
         raw_albums = (song['album'] for song in client.find('artist', self.__artist) if self.__is_valid(song))
         albums = sorted(set(raw_albums))
-        return [GenreArtistAlbum(self.__genre, self.__artist, album) for album in albums]
+        works.extend([GenreArtistAlbum(self.__genre, self.__artist, album) for album in albums])
+        return works
     
     def __is_valid(self, song):
         return self.match_tag(song, 'genre', self.__genre) and self.has_tag(song, 'album')
+
+class GenreArtistSongs(ExpandableItem):
+    """
+    Genre->Artist->All Songs
+    """
+    def __init__(self, genre, artist):
+        super(GenreArtistSongs, self).__init__('All Songs', 'server-database')
+        self.__genre = genre
+        self.__artist = artist
+    
+    def fetch_more(self, client):
+        songs = (song for song in client.find('artist', self.__artist) if self.match_tag(song, 'genre', self.__genre))
+        return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
 
 class GenreArtistAlbum(ExpandableItem):
     
