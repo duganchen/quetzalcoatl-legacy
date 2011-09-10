@@ -198,7 +198,7 @@ class UI(KMainWindow):
         self.__state = 'STOP'
         self.__elapsed = 0
         self.__total = 0
-        
+        self.__slider_is_held = False
 
         timer = QTimer(self)
         timer.timeout.connect(poller.poll)
@@ -206,7 +206,6 @@ class UI(KMainWindow):
         poller.poll()
         timer.start()
         
-        self.__slider_is_held = False
         
     def __set_time(self, elapsed, total):
         if self.__state != 'STOP':
@@ -245,10 +244,11 @@ class UI(KMainWindow):
                 self.__slider.setEnabled(True)
     
     def __hold_slider(self):
-        self.__slider_is_held = True;
+        self.__slider_is_held = True
     
     def __release_slider(self):
-        self.__slider_is_held = False;
+        self.__slider_is_held = False
+        
 
 class UIController(QObject):
     """
@@ -346,16 +346,6 @@ class PlaylistView(QTreeView):
         self.setDropIndicatorShown(True);#        
 
         self.__is_resized = False
-    
-    def resizeEvent(self, event):
-        super(PlaylistView, self).resizeEvent(event)
-        self.__is_resized = True
-    
-    def mouseReleaseEvent(self, event):
-        super(PlaylistView, self).mouseReleaseEvent(event)
-        if self.__is_resized:
-            self.__is_resized = False
-            self.resizeColumnsToContents()
     
     def resizeColumnsToContents(self):
         self.resizeColumnToContents(0)
@@ -1290,10 +1280,14 @@ class PlaylistItem(Item):
     def __init__(self, song):
         super(PlaylistItem, self).__init__(song)
         self.flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
+        self.__time_data = self.time_str(self.raw_data['time'])
+        self.__title_data = self.title(self.raw_data).decode('utf-8')
 
     def data(self, index):
         if index.column() == 0:
-            return self.title(self.raw_data).decode('utf-8')
+            return self.__title_data
+        if index.column() == 1:
+            return self.__time_data 
         return None
     
     @property
