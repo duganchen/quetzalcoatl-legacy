@@ -17,7 +17,7 @@ from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray, QDataStream
 from PyQt4.QtGui import QFont, QHBoxLayout, QIcon, QKeySequence, QLabel, QSlider, QSplitter, QTreeView, QVBoxLayout, QWidget
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
-from socket import error
+import socket
 from datetime import timedelta
 
 
@@ -38,8 +38,9 @@ from datetime import timedelta
 # TO DO:
 
 # Okay, here's the current do-do list:
-# * make the repeat and shuffle buttons work
+# * hook up the slider
 # * get dragging and dropping from the library to the playlist to work again
+# * removing items from the playlist
 # * playlists (saving, renaming, deleting)
 # * get the configuration dialog working again (authentication, volume, single, consume, etc)
 # * album art downloading
@@ -48,7 +49,6 @@ from datetime import timedelta
 # * make sure alphabetical sorting is case-insensitive
 # * make sure playlists aren't listed in the directory listings.
 # * double-clicking on a song (any of them) should take selections into account (if there are any).
-# * put back the resizeColumnsToContent and have it only fire when the mouse is released. Like this: http://www.qtforum.org/post/57011/resize-event.html#post57011
 
 # Last.fm API key. Base64-encoded.
 LAST_FM_KEY_BASE64 = 'Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk='
@@ -133,7 +133,12 @@ class UI(KMainWindow):
         layout.addWidget(splitter)
         self.__client = Client({'host': 'localhost', 'port': 6600})
 
-        database_view = ItemView()
+        database_view = QTreeView()
+        database_view.setIconSize(QSize(34, 34))
+        
+        database_view.setSelectionMode(QTreeView.ExtendedSelection)
+        database_view.setDragEnabled(True)
+        
         splitter.addWidget(database_view)
         database_model = DatabaseModel(self.__client)
         database_model.append_row(Playlists())
@@ -148,12 +153,8 @@ class UI(KMainWindow):
         database_view.setDragEnabled(True)
         database_view.doubleClicked.connect(database_model.handleDoubleClick)
         database_view.setHeaderHidden(True)
-        playlist_view = ItemView()
+        playlist_view = PlaylistView()
         
-        playlist_view.setSelectionMode(playlist_view.ExtendedSelection)
-        playlist_view.setDragEnabled(True);
-        playlist_view.setAcceptDrops(True);
-        playlist_view.setDropIndicatorShown(True);
         splitter.addWidget(playlist_view)
 
         # Connecting signals doesn't keep it from being released.
@@ -183,6 +184,7 @@ class UI(KMainWindow):
         self.__poller.shuffle_changed.connect(self.setShuffle)
         self.__poller.repeat_changed.connect(self.setRepeat)
         
+        playlist_model.playlist_changed.connect(playlist_view.resizeColumnsToContents)
         
         self.__poller.poll()
         
@@ -237,18 +239,22 @@ class UI(KMainWindow):
             self.__repeat = checked
             self.repeat.setChecked(checked)
             self.__client.repeat(int(checked))
+    
+    def sizePlaylist(self):
+        self.__playlist_view.resizeColumnToContents(0)
+        self.__playlist_view.resizeColumnToConents(0)
         
 
-class ItemView(QTreeView):
+class PlaylistView(QTreeView):
     
-    """ A Quetzalcoatl item view """
+    """ The playlist view. """
     
     def __init__(self, parent=None):
         """
         Initializes to default values.
         """
         
-        super(ItemView, self).__init__(parent)
+        super(PlaylistView, self).__init__(parent)
         
         # The icon size chosen accomodates both
         # last.fm icons and Oxygen icons.
@@ -257,16 +263,26 @@ class ItemView(QTreeView):
         self.setSelectionMode(self.ExtendedSelection)
         self.setDragEnabled(True)
 
-        self.expanded.connect(self.resizeColumnsToContents)
-        self.collapsed.connect(self.resizeColumnsToContents)
-        
+        self.setSelectionMode(self.ExtendedSelection)
+        self.setDragEnabled(True);
+        self.setAcceptDrops(True);
+        self.setDropIndicatorShown(True);#        
+
+        self.__is_resized = False
+    
+    def resizeEvent(self, event):
+        super(PlaylistView, self).resizeEvent(event)
+        self.__is_resized = True
+    
+    def mouseReleaseEvent(self, event):
+        super(PlaylistView, self).mouseReleaseEvent(event)
+        if self.__is_resized:
+            self.__is_resized = False
+            self.resizeColumnsToContents()
+    
     def resizeColumnsToContents(self):
-        """
-        Resizes columns to match their contents.
-        """
-        if self.model():
-            for i in xrange(self.model().columnCount()):
-                self.resizeColumnToContents(i) 
+        self.resizeColumnToContents(0)
+        self.resizeColumnToContents(1)
 
 class ItemModel(QAbstractItemModel):
     
@@ -349,7 +365,7 @@ class ItemModel(QAbstractItemModel):
 
         try:
             rows = parent.fetch_more(self.__client)
-        except Exception as e:
+        except (MPDError, socket.error) as e:
             print str(e)
             return
 
@@ -421,6 +437,8 @@ class DatabaseModel(ItemModel):
         return 1
 
 class PlaylistModel(ItemModel):
+    playlist_changed = pyqtSignal()
+
     def __init__(self, client, root, parent_index=None):
         super(PlaylistModel, self).__init__(client, root, parent_index)
         self.__songid = None
@@ -436,6 +454,8 @@ class PlaylistModel(ItemModel):
                 self.set_raw_data(song['pos'], song)
             else:
                 self.append_row(PlaylistItem(song))
+        
+        self.playlist_changed.emit()
    
     def dropMimeData(self, data, action, row, column, parent):
         mime_type = self.mimeTypes()[0]
@@ -455,6 +475,7 @@ class PlaylistModel(ItemModel):
                     dest_row += 1
 
             self.server_updated.emit()
+            self.playlist_changed.emit()
 
             return True
             
@@ -766,7 +787,7 @@ class RandomSong(Song):
 
         try:
             client.playid(client.addid(self.raw_data['file']))
-        except Exception as e:
+        except (MPDError, socket.error) as e:
             print str(e)
         
         return True
@@ -790,21 +811,21 @@ class AlbumSong(Song):
         
         try:
             client.clear()
-        except Exception as e:
+        except (MPDError, socket.error) as e:
             print str(e)
             return False
         
         for uri in (song.raw_data['file'] for song in self.parent.children):
             try:
                 songid = client.addid(uri)
-            except Exception as e:
+            except (MPDError, socket.error) as e:
                 print str(e)
                 return False
             
             if uri == self.raw_data['file']:
                 try:
                     client.playid(songid)
-                except Exception as e:
+                except (MPDError, socket.error) as e:
                     print str(e)
                     return False
         return True
@@ -1237,7 +1258,7 @@ class Poller(QObject):
 
         try:
             self.__handle_status(self.__client.status())
-        except Exception as e:
+        except (MPDError, socket.error) as e:
             print str(e)
 
     def __handle_status(self, status):
@@ -1260,17 +1281,16 @@ class Poller(QObject):
                 self.song_id_changed.emit(status['songid'])
             else:
                 self.song_id_changed.emit(None)
-
+        
         if 'playlist' in status:
             if 'playlist' in self.__status:
-                self.playlist_changed.emit(sorted(self.__client.plchanges(self.__status['playlist']),
-                    key=lambda x: x['pos']), status['playlistlength'])
-
+                if self.__is_changed(status, 'playlist'):
+                    self.playlist_changed.emit(sorted(self.__client.plchanges(self.__status['playlist']),
+                        key=lambda x: x['pos']), status['playlistlength'])
             else:
                 self.playlist_changed.emit(sorted(self.__client.playlistinfo(),
-
                     key=lambda x: x['pos']), status['playlistlength'])
-
+        
         self.__status = status
 
     def __set_is_connected(self, is_connected):
@@ -1284,8 +1304,20 @@ class Poller(QObject):
             self.__reset()
 
     def __is_changed(self, new_status, key):
-        return not key in self.__status or not key in new_status or not self.__status[key] == new_status[key]
-
+        
+        if not key in self.__status and not key in new_status:
+            return False
+        
+        if not key in self.__status and key in new_status:
+            return True
+        
+        if key in self.__status and not key in new_status:
+            return True
+        
+        if self.__status[key] != new_status[key]:
+            return True
+        
+        return False
 
     def __reset(self):
         self.__status = {}
@@ -1315,7 +1347,7 @@ class Client(QObject):
                 client.connect(self.__options['host'], self.__options['port'])
                 self.__poller = SanitizedClient(client)
                 self.is_connected_changed.emit(True)
-            except Exception as e:
+            except (MPDError, socket.error) as e:
                 self.__poller = None
                 raise e
 
@@ -1347,7 +1379,7 @@ class Client(QObject):
     def __wrapper(self, method, *args):
         try:
             return method(*args)
-        except Exception as e:
+        except (MPDError, socket.error) as e:
 
             # If there's an exception, the signal is emitted.
             # Then the signal is raised. In that order.
