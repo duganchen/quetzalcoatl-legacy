@@ -12,7 +12,7 @@ setapi("QUrl", 2)
 
 from sys import argv, exit
 from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
-from PyKDE4.kdeui import KAction, KApplication, KIcon, KMainWindow
+from PyKDE4.kdeui import KAction, KApplication, KIcon, KMainWindow, KToggleAction
 from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray, QDataStream, QIODevice, QMimeData, QModelIndex, QObject, QSize, Qt, QTimer
 from PyQt4.QtGui import QFont, QHBoxLayout, QIcon, QKeySequence, QLabel, QSlider, QSplitter, QTreeView, QVBoxLayout, QWidget
 from posixpath import basename, splitext
@@ -84,6 +84,9 @@ class UI(KMainWindow):
         self.setCentralWidget(centralWidget)
         layout = QVBoxLayout()
         centralWidget.setLayout(layout)
+        
+        self.__shuffle = False
+        self.__repeat = False
 
         self.__toolbar = self.toolBar('ToolBar')
         
@@ -117,11 +120,14 @@ class UI(KMainWindow):
 
         self.__toolbar.addSeparator()
 
-        shuffle = KAction(KIcon('media-playlist-shuffle'), 'Shuffle', self)
-        self.__toolbar.addAction(shuffle)
+        self.shuffle = KToggleAction(KIcon('media-playlist-shuffle'), 'Shuffle', self)
+        self.shuffle.toggled.connect(self.setShuffle)
+        self.__toolbar.addAction(self.shuffle)
 
-        repeat = KAction(KIcon('media-playlist-repeat'), '', self)
-        self.__toolbar.addAction(repeat)
+        self.repeat = KToggleAction(KIcon('media-playlist-repeat'), 'Repeat', self)
+        self.repeat.toggled.connect(self.setRepeat)
+        self.__toolbar.addAction(self.repeat)
+        
         splitter = QSplitter()
         layout.addWidget(QSlider(Qt.Horizontal))
         layout.addWidget(splitter)
@@ -173,7 +179,13 @@ class UI(KMainWindow):
         
         self.__poller.state_changed.connect(self.__set_state)
         self.__poller.time_changed.connect(self.__set_time)
+        
+        self.__poller.shuffle_changed.connect(self.setShuffle)
+        self.__poller.repeat_changed.connect(self.setRepeat)
+        
+        
         self.__poller.poll()
+        
     
     def __stop(self):
         self.__client.stop()
@@ -213,7 +225,18 @@ class UI(KMainWindow):
             if self.__state == 'pause' or state == 'stop' and self.__pause_action in actions:
                 self.__toolbar.removeAction(self.__pause_action)
                 self.__toolbar.insertAction(self.__skip_backward_action, self.__play_action)
-        
+    
+    def setShuffle(self, checked):
+        if self.__shuffle != checked:
+            self.__shuffle = checked
+            self.shuffle.setChecked(checked)
+            self.__client.random(int(checked))
+    
+    def setRepeat(self, checked):
+        if self.__repeat != checked:
+            self.__repeat = checked
+            self.repeat.setChecked(checked)
+            self.__client.repeat(int(checked))
         
 
 class ItemView(QTreeView):
@@ -1191,7 +1214,7 @@ class Poller(QObject):
 
     playlist_changed = pyqtSignal(list, int)
     repeat_changed = pyqtSignal(bool)
-    random_changed = pyqtSignal(bool)
+    shuffle_changed = pyqtSignal(bool)
     state_changed = pyqtSignal(str)
     time_changed = pyqtSignal(timedelta, timedelta)
     song_id_changed = pyqtSignal(int)
@@ -1218,12 +1241,11 @@ class Poller(QObject):
             print str(e)
 
     def __handle_status(self, status):
-
         if self.__is_changed(status, 'repeat'):
             self.repeat_changed.emit(status['repeat'])
 
         if self.__is_changed(status, 'random'):
-            self.random_changed.emit(status['random'])
+            self.shuffle_changed.emit(status['random'])
 
         if self.__is_changed(status, 'state'):
             self.state_changed.emit(status['state'])
@@ -1268,7 +1290,7 @@ class Poller(QObject):
     def __reset(self):
         self.__status = {}
         self.repeat_changed.emit(False)
-        self.random_changed.emit(False)
+        self.shuffle_changed.emit(False)
         self.state_changed.emit('STOP')
         self.song_id_changed.emit(None)
 
@@ -1371,10 +1393,10 @@ class SanitizedClient(object):
         self.__sanitizers['db_update'] = int
         self.__sanitizers['playtime'] = int
         self.__sanitizers['db_playtime'] = int
-        self.__sanitizers['repeat'] = bool
-        self.__sanitizers['consume'] = bool
-        self.__sanitizers['random'] = bool
-        self.__sanitizers['single'] = bool
+        self.__sanitizers['repeat'] = lambda x: bool(int(x))
+        self.__sanitizers['consume'] = lambda x: bool(int(x))
+        self.__sanitizers['random'] = lambda x: bool(int(x))
+        self.__sanitizers['single'] = lambda x: bool(int(x))
         self.__sanitizers['track'] = self.__sanitized_track
         self.__sanitizers['time'] = self.__sanitize_time
         self.__sanitizers['title'] = self.__sanitize_tag
