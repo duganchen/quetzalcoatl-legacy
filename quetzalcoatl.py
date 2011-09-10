@@ -46,6 +46,13 @@ from datetime import timedelta
 # * get the configuration dialog working again (authentication, volume, single, consume, etc)
 # * album art downloading
 
+# Nodes to add:
+# Artists->____->All Songs
+# Genres->____->All Songs
+# Genres->____->Compilations
+# Genres->____->All Songs
+# Composers->____->All Songs
+
 # Last.fm API key. Base64-encoded.
 LAST_FM_KEY_BASE64 = 'Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk='
 
