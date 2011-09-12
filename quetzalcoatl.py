@@ -38,9 +38,9 @@ import socket
 
 # Okay, here's the current do-do list:
 
+# * removing items from the playlist
 # * get dragging and dropping from the library to the playlist to work again
 # * double-clicking on a song (any of them) should take selections into account (if there are any).
-# * removing items from the playlist
 # * playlists (saving, renaming, deleting)
 # * get the configuration dialog working again (authentication, volume, single, consume, etc)
 # * album art downloading
@@ -90,9 +90,6 @@ class UI(KMainWindow):
         poller.state_changed.connect(controller.set_state)
         poller.state_changed.connect(self.__set_state)
         poller.time_changed.connect(self.__set_time)
-        
-#        poller.shuffle_changed.connect(controller.set_shuffle)
-#        poller.repeat_changed.connect(controller.set_repeat)
 
         centralWidget = QWidget(self)
         self.setCentralWidget(centralWidget)
@@ -144,6 +141,12 @@ class UI(KMainWindow):
         poller.repeat_changed.connect(repeat.setChecked)
         repeat.toggled.connect(controller.set_repeat)
         self.__toolbar.addAction(repeat)
+        
+        self.__toolbar.addSeparator()
+        
+        delete = KAction(KIcon('edit-delete'), 'Deleted selected playlist items', self)
+        delete.setShortcut(QKeySequence(Qt.Key_Delete))
+        self.__toolbar.addAction(delete)
         
         splitter = QSplitter()
         self.__slider = QSlider(Qt.Horizontal)
