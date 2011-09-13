@@ -38,7 +38,6 @@ import socket
 
 # Okay, here's the current do-do list:
 
-# * removing items from the playlist
 # * get dragging and dropping from the library to the playlist to work again
 # * double-clicking on a song (any of them) should take selections into account (if there are any).
 # * playlists (saving, renaming, deleting)
@@ -179,6 +178,8 @@ class UI(KMainWindow):
         database_view.doubleClicked.connect(database_model.handleDoubleClick)
         database_view.setHeaderHidden(True)
         playlist_view = PlaylistView()
+        
+        delete.triggered.connect(playlist_view.delete_selected)
         
         splitter.addWidget(playlist_view)
 
@@ -352,6 +353,9 @@ class PlaylistView(QTreeView):
     def resizeColumnsToContents(self):
         self.resizeColumnToContents(0)
         self.resizeColumnToContents(1)
+    
+    def delete_selected(self):
+        self.model().delete(self.selectedIndexes())
 
 class ItemModel(QAbstractItemModel):
     
@@ -472,12 +476,6 @@ class ItemModel(QAbstractItemModel):
         self.__root.remove_rows(row, count)
         self.endRemoveRows()
 
-    def set_raw_data(self, row, value):
-        index = self.index(row, 0)
-        item = self.itemFromIndex(index)
-        item.raw_data = value
-        self.dataChanged.emit(index, index)
-
     @property
     def client(self):
         return self.__client
@@ -536,7 +534,7 @@ class PlaylistModel(ItemModel):
             while not stream.atEnd():
                 source_row = stream.readUInt16()
                 item = root.child(source_row)
-                songid = item.raw_data['id']
+                songid = item['id']
                 if source_row < dest_row:
                     self.client.moveid(songid, dest_row - 1)
                 else:
@@ -575,7 +573,7 @@ class PlaylistModel(ItemModel):
         return mime_data
 
     def data(self, index, role=Qt.DisplayRole):
-        if role == Qt.FontRole and index.internalPointer().raw_data['id'] == self.__songid:
+        if role == Qt.FontRole and index.internalPointer()['id'] == self.__songid:
             font = QFont()
             font.setBold(True)
             return font
@@ -593,7 +591,7 @@ class PlaylistModel(ItemModel):
         for row, song in enumerate(self.children):
             
             # Clear the old song and bold the new one.
-            if song.raw_data['id'] == old_id or song.raw_data['id'] == self.__songid:
+            if song['id'] == old_id or song['id'] == self.__songid:
                 self.dataChanged.emit(self.index(row, 0), self.index(row, 1))
         
         self.playlist_changed.emit()
@@ -614,6 +612,17 @@ class PlaylistModel(ItemModel):
             return False
         return True
     
+    def delete(self, indexes):
+        
+        for id in set(index.internalPointer()['id'] for index in indexes):
+            self.client.deleteid(id)
+        self.server_updated.emit()
+
+    def set_raw_data(self, row, value):
+        index = self.index(row, 0)
+        item = self.itemFromIndex(index)
+        item.set_raw_data(value)
+        self.dataChanged.emit(index, self.index(row, 1))
 
 
 class Item(object):
@@ -634,7 +643,7 @@ class Item(object):
     icons['.wav'] = QIcon(KIcon('audio-x-wav'))
 
 
-    def __init__(self, raw_data=None, parent=None):
+    def __init__(self, parent=None):
         """
         Creates an Item with the most
         boring default settings possible.
@@ -642,19 +651,8 @@ class Item(object):
         self.__parent_item = parent
         self.__child_items = []
         self.__can_fetch_more = False
-        self.__icon = None
         self.__has_children = False
         self.__flags = Qt.NoItemFlags
-        self.__column_data = {}
-        self.__raw_data = raw_data
-
-    @property
-    def raw_data(self):
-        return self.__raw_data
-
-    @raw_data.setter
-    def raw_data(self, value):
-        self.__raw_data = value
 
     def append_row(self, child):
         """ Adds a child item. """
@@ -683,14 +681,14 @@ class Item(object):
         """ Returns the number of children. """
         return len(self.__child_items)
     
-    def data(self, index, role=Qt.DisplayRole):
+    def data(self, index):
         """
         Returns data for the item's display role..
         
-        Default implementation returns the raw data.
+        Default implementation returns nothing.
         """
         
-        return self.__raw_data
+        return None
     
     @property
     def row(self):
@@ -733,12 +731,8 @@ class Item(object):
         """
         Returns the item's icon.
         """
-        return self.__icon
-    
-    @icon.setter
-    def icon(self, value):
-        """ Sets the item's icon. """
-        self.__icon = value
+        
+        return None
     
     @property
     def can_fetch_more(self):
@@ -824,24 +818,31 @@ class Song(Item):
     def __init__(self, song):
         super(Song, self).__init__(song)
         self.flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
-        self.icon = self.icons['audio-x-generic']
         self.has_children = False
         self.can_fetch_more = False
-        self.__label = self.title(self.raw_data).decode('utf-8')
+        self.set_raw_data(song)
+        self.__icon = self.icons['audio-x-generic']
+    
+    def __getitem__(self, key):
+        return self.__song[key]
 
     def data(self, index):
         if index.column() == 0:
             return self.__label
+        
+        if index.column() == 1:
+            return self.__time
+    
         return None
     
     @property
-    def raw_data(self):
-        return super(Song, self).raw_data
+    def icon(self):
+        return self.__icon
     
-    @raw_data.setter
-    def raw_data(self, value):
-        super(Song, self).raw_data = value
-        self.__label = self.title(self.raw_data).decode('utf-8')
+    def set_raw_data(self, song):
+        self.__song = song
+        self.__label = self.title(song).decode('utf-8')
+        self.__time = self.time_str(song['time'])
 
 class RandomSong(Song):
     """
@@ -856,7 +857,7 @@ class RandomSong(Song):
         """
 
         try:
-            client.playid(client.addid(self.raw_data['file']))
+            client.playid(client.addid(self['file']))
         except (MPDError, socket.error) as e:
             print str(e)
         
@@ -885,14 +886,14 @@ class AlbumSong(Song):
             print str(e)
             return False
         
-        for uri in (song.raw_data['file'] for song in self.parent.children):
+        for uri in (song['file'] for song in self.parent.children):
             try:
                 songid = client.addid(uri)
             except (MPDError, socket.error) as e:
                 print str(e)
                 return False
             
-            if uri == self.raw_data['file']:
+            if uri == self['file']:
                 try:
                     client.playid(songid)
                 except (MPDError, socket.error) as e:
@@ -910,16 +911,21 @@ class ExpandableItem(Item):
         Takes a text label and the name of its icon.
         """
         super(ExpandableItem, self).__init__(label)
-        self.icon = self.icons[icon_name]
+        self.__icon = self.icons[icon_name]
         self.has_children = True
         self.can_fetch_more = True
         self.flags = Qt.ItemIsEnabled
+        self.__label = label
 
     def data(self, index):
         if index.column() == 0:
-            return self.raw_data
+            return self.__label
 
         return None
+    
+    @property
+    def icon(self):
+        return self.__icon
 
     @classmethod
     def has_tag(cls, song, tag):
@@ -1259,9 +1265,8 @@ class Directory(ExpandableItem):
 
     def __init__(self, root, icon):
         super(Directory, self).__init__(root, icon)
+        self.__label = basename(root) if basename(root) == '' else root
         self.__root = root
-        if basename(root) != '':
-            self.raw_data = basename(root)
     
     def fetch_more(self, client):
         listing = client.lsinfo(self.__root)
@@ -1275,31 +1280,16 @@ class Directory(ExpandableItem):
         return directories
 
 
-class PlaylistItem(Item):
+class PlaylistItem(Song):
     """
     A song in the playlist.
     """
     def __init__(self, song):
         super(PlaylistItem, self).__init__(song)
-        self.flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
-        self.__time_data = self.time_str(self.raw_data['time'])
-        self.__title_data = self.title(self.raw_data).decode('utf-8')
-
-    def data(self, index):
-        if index.column() == 0:
-            return self.__title_data
-        if index.column() == 1:
-            return self.__time_data 
-        return None
-    
-    @property
-    def icon(self):
-        return self.icons['audio-x-generic']
     
     def handleDoubleClick(self, client):
-        client.playid(self.raw_data['id'])
+        client.playid(self['id'])
         return True
-    
 
 class Poller(QObject):
 
