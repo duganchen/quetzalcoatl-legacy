@@ -45,7 +45,6 @@ import socket
 # * album art downloading
 # * refreshing the server
 
-# * make sure alphabetical sorting is case-insensitive
 # * make sure playlists aren't listed in the directory listings.
 # * test the hell out of losing the connection to the server
 # * make sure that events are consistent even when another client is chaning the server state.
@@ -974,7 +973,7 @@ class Artists(ExpandableItem):
     
     def fetch_more(self, client):
         artists = (artist for artist in client.list('artist') if len(artist.strip()) > 0)
-        return [Artist(artist) for artist in sorted(artists)]
+        return [Artist(artist) for artist in sorted(artists, key=str.lower)]
 
 class Artist(ExpandableItem):
     """
@@ -989,7 +988,7 @@ class Artist(ExpandableItem):
         works = [ArtistSongs(self.__artist)]
         albums = (album for album in client.list('album', self.__artist) if len(album.strip()) > 0)
         works.extend([ArtistAlbum(self.__artist, album)
-                for album in sorted(albums)])
+                for album in sorted(albums, key=str.lower)])
         return works
 
 class ArtistSongs(ExpandableItem):
@@ -1024,7 +1023,7 @@ class Albums(ExpandableItem):
     
     def fetch_more(self, client):
         albums = (album for album in client.list('album') if len(album.strip()) > 0)
-        return [Album(album) for album in sorted(albums)]
+        return [Album(album) for album in sorted(albums, key=str.lower)]
 
 class Album(ExpandableItem):
     """
@@ -1048,7 +1047,7 @@ class Compilations(ExpandableItem):
     
     def fetch_more(self, client):
         album_artists = (album_artist for album_artist in client.list('albumartist') if len(album_artist.strip()) > 0)
-        return [Compilation(artist) for artist in sorted(album_artists)]
+        return [Compilation(artist) for artist in sorted(album_artists, key=str.lower)]
 
 class Compilation(ExpandableItem):
     """
@@ -1072,7 +1071,7 @@ class Genres(ExpandableItem):
     
     def fetch_more(self, client):
         genres = (genre for genre in client.list('genre') if len(genre.strip()) > 0)
-        return [Genre(genre) for genre in sorted(genres)]
+        return [Genre(genre) for genre in sorted(genres, key=str.lower)]
 
 class Genre(ExpandableItem):
     """
@@ -1087,7 +1086,7 @@ class Genre(ExpandableItem):
         works = [GenreSongs(self.__genre)]
         works.append(GenreCompilers(self.__genre))
         raw_artists = (song['artist'] for song in client.find('genre', self.__genre) if self.__is_valid(song))
-        artists = sorted(set(raw_artists))
+        artists = sorted(set(raw_artists), key=str.lower)
         works.extend([GenreArtist(self.__genre, artist) for artist in artists])
         return works
 
@@ -1165,7 +1164,7 @@ class GenreArtist(ExpandableItem):
     def fetch_more(self, client):
         works = [GenreArtistSongs(self.__genre, self.__artist)]
         raw_albums = (song['album'] for song in client.find('artist', self.__artist) if self.__is_valid(song))
-        albums = sorted(set(raw_albums))
+        albums = sorted(set(raw_albums), key=str.lower)
         works.extend([GenreArtistAlbum(self.__genre, self.__artist, album) for album in albums])
         return works
     
@@ -1214,7 +1213,7 @@ class Composers(ExpandableItem):
     
     def fetch_more(self, client):
         composers = (composer for composer in client.list('composer') if len(composer.strip()) > 0)
-        return [Composer(composer) for composer in sorted(composers)]
+        return [Composer(composer) for composer in sorted(composers, key=str.lower)]
 
 class Composer(ExpandableItem):
     """
@@ -1227,7 +1226,7 @@ class Composer(ExpandableItem):
     def fetch_more(self, client):
         works = [ComposerSongs(self.__composer)]
         raw_albums = (song['album'] for song in client.find('composer', self.__composer) if self.__is_valid(song))
-        albums = sorted(set(raw_albums))
+        albums = sorted(set(raw_albums), key=str.lower)
         works.extend([ComposerAlbum(self.__composer, album) for album in albums])
         return works
     
