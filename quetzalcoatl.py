@@ -38,6 +38,7 @@ import socket
 
 # Okay, here's the current do-do list:
 
+# * Take into account the fact that the 'playlist' key can return a string (for .m3u files in an lsinfo)
 # * After dropping songs onto the playlist, those songs need to be selected.
 # * get dragging and dropping from the library to the playlist to work again
 # * double-clicking on a song (any of them) should take selections into account (if there are any).
@@ -1272,7 +1273,6 @@ class Directory(ExpandableItem):
     
     def fetch_more(self, client):
         listing = client.lsinfo(self.__root)
-
         directories = [Directory(directory, 'folder-sound') for directory in sorted((x['directory'] for x in listing if 'directory' in x),
                      key=str.lower)]
 
@@ -1528,7 +1528,18 @@ class SanitizedClient(object):
         """
         lsinfo() and status() can both return a playlist key.
         """
-        return int(value)
+
+        # 'playlist' in status is an integer
+        # in ls[all]info it's a filename
+
+        root, ext = splitext(value)
+        if len(ext.strip()) == 0:
+            try:
+                return int(value)
+            except:
+                pass
+
+        return value
 
     @classmethod
     def __sanitize_tag(cls, value):
@@ -1573,6 +1584,7 @@ class SanitizedClient(object):
         """
 
         result = method(*args)
+
         if type(result) == dict:
             self.__sanitize_dict(result)
         if type(result) == list:
@@ -1596,7 +1608,7 @@ class SanitizedClient(object):
                         int(dictionary['track'])
                     except:
                         del dictionary['track']
-    
+
     def __getattr__(self, attr):
         attribute = getattr(self.__client, attr)
         if hasattr(attribute, "__call__"):
