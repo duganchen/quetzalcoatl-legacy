@@ -38,13 +38,16 @@ import socket
 
 # Okay, here's the current do-do list:
 
+# * After dropping songs onto the playlist, those songs need to be selected.
 # * get dragging and dropping from the library to the playlist to work again
 # * double-clicking on a song (any of them) should take selections into account (if there are any).
 # * playlists (saving, renaming, deleting)
+# * Directories should be double-clickable and double-clicking them should add
+#   the directory to the playlist recursively.
 # * get the configuration dialog working again (authentication, volume, single, consume, etc)
 # * album art downloading
 # * refreshing the server
-
+# * Streams and podcasts (in addition to the music library)
 # * make sure playlists aren't listed in the directory listings.
 # * test the hell out of losing the connection to the server
 # * make sure that events are consistent even when another client is chaning the server state.
