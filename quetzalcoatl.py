@@ -38,8 +38,6 @@ import socket
 
 # Okay, here's the current do-do list:
 
-# * Get rid of Genres->Genre->Compilations
-# * Take into account the fact that the 'playlist' key can return a string (for .m3u files in an lsinfo)
 # * After dropping songs onto the playlist, those songs need to be selected.
 # * get dragging and dropping from the library to the playlist to work again
 # * double-clicking on a song (any of them) should take selections into account (if there are any).
@@ -49,6 +47,7 @@ import socket
 # * get the configuration dialog working again (authentication, volume, single, consume, etc)
 # * album art downloading
 # * refreshing the server
+# * scrobbling
 # * Streams and podcasts (in addition to the music library)
 # * make sure playlists aren't listed in the directory listings.
 # * test the hell out of losing the connection to the server
@@ -1089,7 +1088,6 @@ class Genre(ExpandableItem):
     
     def fetch_more(self, client):
         works = [GenreSongs(self.__genre)]
-        works.append(GenreCompilers(self.__genre))
         raw_artists = (song['artist'] for song in client.find('genre', self.__genre) if self.__is_valid(song))
         artists = sorted(set(raw_artists), key=str.lower)
         works.extend([GenreArtist(self.__genre, artist) for artist in artists])
@@ -1110,51 +1108,6 @@ class GenreSongs(ExpandableItem):
     def fetch_more(self, client):
         songs = (x for x in client.find('genre', self.__genre))
         return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
-
-class GenreCompilers(ExpandableItem):
-    # Genre -> Genre -> Compilations
-    
-    def __init__(self, genre):
-        super(GenreCompilers, self).__init__('Compilations', 'server-database')
-        self.__genre = genre
-    
-    def fetch_more(self, client):
-        compilers = set(song['albumartist'] for song in client.find('genre', self.__genre) if self.has_tag(song, 'albumartist'))
-        return [GenreCompiler(self.__genre, compiler) for compiler in sorted(compilers, key=str.lower)]
-
-class GenreCompiler(ExpandableItem):
-    # Genre -> Genre -> Compilations -> Various Artists
-    
-    def __init__(self, genre, album_artist):
-        super(GenreCompiler, self).__init__(album_artist, 'folder-sound')
-        self.__genre = genre
-        self.__album_artist = album_artist
-    
-    def fetch_more(self, client):
-        albums = set(song['album'] for song in
-                     client.find('albumartist', self.__album_artist)
-                     if self.match_tag(song, 'genre', self.__genre))
-        return [GenreCompilation(self.__genre, self.__album_artist, album) for album in sorted(albums, key=str.lower)]
-
-class GenreCompilation(ExpandableItem):
-    
-    """
-    Genres -> Genre -> Compilations -> Album Artist -> Album
-    """
-    
-    def __init__(self, genre, album_artist, album):
-        super(GenreCompilation, self).__init__(album, 'media-optical-audio')
-        self.__genre = genre
-        self.__album_artist = album_artist
-        self.__album = album
-        
-    def fetch_more(self, client):
-        album_songs = client.find('album', self.__album)
-        return self.sorted_album(song for song in album_songs if self.__is_valid(song))
-    
-    def __is_valid(self, song):
-        return self.match_tag(song, 'genre', self.__genre) and self.match_tag(song, 'albumartist', self.__album_artist)
-
 
 class GenreArtist(ExpandableItem):
     """
