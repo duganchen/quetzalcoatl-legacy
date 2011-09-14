@@ -49,12 +49,9 @@ import socket
 # * refreshing the server
 # * scrobbling
 # * Streams and podcasts (in addition to the music library)
-# * make sure playlists aren't listed in the directory listings.
-# * test the hell out of losing the connection to the server
-# * make sure that events are consistent even when another client is chaning the server state.
 
-
-# Last.fm API key. Base64-encoded.
+# Last.fm API key. Base64-encoded. Please don't steal this key
+# (if you're forking it, please get your own).
 LAST_FM_KEY_BASE64 = 'Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk='
 
 def main():
