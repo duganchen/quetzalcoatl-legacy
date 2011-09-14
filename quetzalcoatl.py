@@ -38,6 +38,7 @@ import socket
 
 # Okay, here's the current do-do list:
 
+# * Get rid of Genres->Genre->Compilations
 # * Take into account the fact that the 'playlist' key can return a string (for .m3u files in an lsinfo)
 # * After dropping songs onto the playlist, those songs need to be selected.
 # * get dragging and dropping from the library to the playlist to work again
