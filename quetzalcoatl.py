@@ -1036,7 +1036,7 @@ class Album(ExpandableItem):
     """
     
     def __init__(self, album):
-        super(Album, self).__init__(album, 'folder-sound')
+        super(Album, self).__init__(album, 'media-optical-audio')
         self.__album = album
     
     def fetch_more(self, client):
