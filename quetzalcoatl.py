@@ -551,8 +551,8 @@ class PlaylistModel(ItemModel):
     def flags(self, index):
         if index.isValid():
             flags = self.itemFromIndex(index).flags
-            if index.column() > 1:
-                flags &= ~Qt.ItemIsDragEnabled
+            if index.column() > 0:
+                flags = Qt.ItemIsEnabled
             return flags
         else:
             return Qt.ItemIsDropEnabled
@@ -842,7 +842,7 @@ class Song(Item):
     def set_raw_data(self, song):
         self.__song = song
         self.__label = self.title(song).decode('utf-8')
-        self.__time = self.time_str(song['time']) if 'time' in song else None
+        self.__time = self.time_str(song['time'])
 
 class RandomSong(Song):
     """
