@@ -554,7 +554,7 @@ class PlaylistModel(ItemModel):
         if index.isValid() and index.column() > 0:
             return Qt.ItemIsEnabled
         if not index.isValid():
-            # invalid indexes have a row of -1.
+            # invalid indexes have a row and column of -1.
             return Qt.ItemIsDropEnabled
 
     def mimeTypes(self):
