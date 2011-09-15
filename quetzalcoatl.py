@@ -549,12 +549,12 @@ class PlaylistModel(ItemModel):
         return False
 
     def flags(self, index):
-        if index.isValid():
-            flags = self.itemFromIndex(index).flags
-            if index.column() > 0:
-                flags = Qt.ItemIsEnabled
-            return flags
-        else:
+        if index.isValid() and index.column() == 0:
+            return self.itemFromIndex(index).flags
+        if index.isValid() and index.column() > 0:
+            return Qt.ItemIsEnabled
+        if not index.isValid():
+            # invalid indexes have a row of -1.
             return Qt.ItemIsDropEnabled
 
     def mimeTypes(self):
