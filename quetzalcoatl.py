@@ -208,6 +208,7 @@ class UI(KMainWindow):
         timer.setInterval(1000)
         poller.poll()
         timer.start()
+        playlist_view.setDragEnabled(True)
         
         
     def __set_time(self, elapsed, total):
@@ -342,9 +343,6 @@ class PlaylistView(QTreeView):
         
         self.setSelectionMode(self.ExtendedSelection)
         self.setDragEnabled(True)
-
-        self.setSelectionMode(self.ExtendedSelection)
-        self.setDragEnabled(True);
         self.setAcceptDrops(True);
         self.setDropIndicatorShown(True);#        
 
@@ -381,6 +379,7 @@ class ItemModel(QAbstractItemModel):
     def flags(self, index):
         
         item = self.itemFromIndex(index)
+
         if item != self.__root:
             return item.flags
         return Qt.NoItemFlags
@@ -502,6 +501,20 @@ class DatabaseModel(ItemModel):
     
     def columnCount(self, parent_index=QModelIndex()):
         return 1
+ 
+    def mimeTypes(self):
+        return ['x-application/vnd.mpd.uri']
+
+    def mimeData(self, indexes):
+        encoded_data = QByteArray()
+        stream = QDataStream(encoded_data, QIODevice.WriteOnly)
+        for index in sorted(indexes, key=lambda x: x.row(), reverse=True):
+            stream.writeString(index.internalPointer()['file'])
+        mime_data = QMimeData()
+        mime_data.setData(self.mimeTypes()[0], encoded_data)
+
+        
+        return mime_data
 
 class PlaylistModel(ItemModel):
     playlist_changed = pyqtSignal()
@@ -525,9 +538,11 @@ class PlaylistModel(ItemModel):
         self.playlist_changed.emit()
    
     def dropMimeData(self, data, action, row, column, parent):
-        mime_type = self.mimeTypes()[0]
-        if data.hasFormat(mime_type):
-            encoded_data = data.data(mime_type)
+        
+        # MPD just doesn't have a single command to move a single song in the
+        # playlist to the end.
+        if data.hasFormat('x-application/vnd.mpd.songid') and row != -1:
+            encoded_data = data.data('x-application/vnd.mpd.songid')
             stream = QDataStream(encoded_data, QIODevice.ReadOnly)
             root = self.itemFromIndex(QModelIndex())
             dest_row = row
@@ -545,6 +560,21 @@ class PlaylistModel(ItemModel):
             self.playlist_changed.emit()
 
             return True
+        
+        if data.hasFormat('x-application/vnd.mpd.uri'):
+            encoded_data = data.data('x-application/vnd.mpd.uri')
+            stream = QDataStream(encoded_data, QIODevice.ReadOnly)
+            while not stream.atEnd():
+                uri = stream.readString()
+                
+                if row == -1:
+                    self.client.add(uri)
+                else:
+                    self.client.addid(uri, row)
+
+            self.server_updated.emit()
+            self.playlist_changed.emit()
+            return True
             
         return False
 
@@ -558,7 +588,8 @@ class PlaylistModel(ItemModel):
             return Qt.ItemIsDropEnabled
 
     def mimeTypes(self):
-        return ['x-application/vnd.mpd.songid']
+        return ['x-application/vnd.mpd.songid',
+                'x-application/vnd.mpd.uri']
 
     def mimeData(self, indexes):
         encoded_data = QByteArray()
