@@ -39,7 +39,6 @@ import socket
 # Okay, here's the current do-do list:
 
 # * After dropping songs onto the playlist, those songs need to be selected.
-# * get dragging and dropping from the library to the playlist to work again
 # * double-clicking on a song (any of them) should take selections into account (if there are any).
 # * playlists (saving, renaming, deleting)
 # * Directories should be double-clickable and double-clicking them should add
