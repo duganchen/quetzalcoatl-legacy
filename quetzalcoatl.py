@@ -842,7 +842,10 @@ class Song(Item):
     def set_raw_data(self, song):
         self.__song = song
         self.__label = self.title(song).decode('utf-8')
-        self.__time = self.time_str(song['time'])
+        
+        # Internet streams (which may be added by other clients, of course...)
+        # don't have times.
+        self.__time = self.time_str(song['time']) if 'time' in song else None
 
 class RandomSong(Song):
     """
