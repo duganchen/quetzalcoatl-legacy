@@ -13,8 +13,8 @@ setapi("QUrl", 2)
 from sys import argv, exit
 from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
 from PyKDE4.kdeui import KAction, KApplication, KIcon, KMainWindow, KToggleAction
-from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray, QDataStream, QIODevice, QMimeData, QModelIndex, QObject, QSize, Qt, QTimer
-from PyQt4.QtGui import QFont, QHBoxLayout, QIcon, QKeySequence, QLabel, QSlider, QSplitter, QTreeView, QVBoxLayout, QWidget
+from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray, QDataStream, QEvent, QIODevice, QMimeData, QModelIndex, QObject, QSize, Qt, QTimer
+from PyQt4.QtGui import QFont, QIcon, QKeySequence, QLabel, QSlider, QSplitter, QToolTip, QTreeView, QVBoxLayout, QWidget
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 from base64 import b64decode
@@ -156,12 +156,7 @@ class UI(KMainWindow):
         self.__slider.sliderReleased.connect(self.__release_slider)
         layout.addWidget(splitter)
 
-        database_view = QTreeView()
-        database_view.setIconSize(QSize(34, 34))
-        
-        database_view.setSelectionMode(QTreeView.ExtendedSelection)
-        database_view.setDragEnabled(True)
-        
+        database_view = ItemView()
         splitter.addWidget(database_view)
         database_model = DatabaseModel(client)
         database_model.append_row(Playlists())
@@ -323,9 +318,37 @@ class UIController(QObject):
 
         if state != self.__state:
             self.__state = state
-        
 
-class PlaylistView(QTreeView):
+class ItemView(QTreeView):
+    def __init__(self, parent=None):
+        super(ItemView, self).__init__(parent)
+        # The icon size chosen accomodates both
+        # last.fm icons and Oxygen icons.
+        self.setIconSize(QSize(34, 34))
+        self.setSelectionMode(self.ExtendedSelection)
+        self.setDragEnabled(True)
+    
+    def viewportEvent(self, event):
+
+        if event.type() == QEvent.ToolTip:
+            index = self.indexAt(event.pos())
+            if index.isValid():
+                song = index.internalPointer()
+                tag_values = []
+                
+                # Songs and non-songs (like 'Genres') have different flags.
+                if song.flags & Qt.ItemIsSelectable:
+                    for tag in ('title', 'track', 'album', 'disc', 'artist', 'albumartist', 'composer', 'genre'):
+                        if tag in song:
+                            tag_values.append('{0}: {1}'.format(tag, song[tag]))
+                if len(tag_values) > 0:
+                    QToolTip.showText(event.globalPos(), '\n'.join(tag_values))
+                    return True
+    
+        return super(ItemView, self).viewportEvent(event)
+            
+
+class PlaylistView(ItemView):
     
     """ The playlist view. """
     
@@ -333,15 +356,8 @@ class PlaylistView(QTreeView):
         """
         Initializes to default values.
         """
-        
+
         super(PlaylistView, self).__init__(parent)
-        
-        # The icon size chosen accomodates both
-        # last.fm icons and Oxygen icons.
-        self.setIconSize(QSize(34, 34))
-        
-        self.setSelectionMode(self.ExtendedSelection)
-        self.setDragEnabled(True)
         self.setAcceptDrops(True);
         self.setDropIndicatorShown(True);#        
 
@@ -491,6 +507,7 @@ class ItemModel(QAbstractItemModel):
     def children(self):
         """ Returns an iterator for the children. """
         return self.__root.children
+
 
 class DatabaseModel(ItemModel):
     def __init__(self, client, parent=None):
@@ -849,6 +866,9 @@ class Song(Item):
     
     def __getitem__(self, key):
         return self.__song[key]
+    
+    def __contains__(self, key):
+        return key in self.__song
 
     def data(self, index):
         if index.column() == 0:
