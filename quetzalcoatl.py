@@ -171,10 +171,14 @@ class UI(KMainWindow):
 
         self.__toolbar.addSeparator()
 
-        delete = KAction(KIcon('edit-delete'),
-                'Deleted selected playlist items', self)
+        delete = KAction(KIcon('list-remove'),
+                '[DEL]ete selected playlist items', self)
         delete.setShortcut(QKeySequence(Qt.Key_Delete))
         self.__toolbar.addAction(delete)
+        
+        save_playlist = KAction(KIcon('document-save-all'), '[CTRL-S]ave playlist', self)
+        save_playlist.setShortcut(QKeySequence('CTRL+S'))
+        self.__toolbar.addAction(save_playlist)
 
         splitter = QSplitter()
         self.__slider = QSlider(Qt.Horizontal)
@@ -234,6 +238,8 @@ class UI(KMainWindow):
         poller.poll()
         timer.start()
         playlist_view.setDragEnabled(True)
+        
+        save_playlist.triggered.connect(playlist_model.save)
 
     def __set_time(self, elapsed, total):
         if self.__state != 'STOP':
@@ -356,7 +362,9 @@ class UIController(QObject):
 
         if state != self.__state:
             self.__state = state
-
+    
+    def save_playlist(self):
+        self.__client.
 
 class ItemView(QTreeView):
     def __init__(self, parent=None):
