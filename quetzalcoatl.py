@@ -43,8 +43,6 @@ import socket
 
 # Okay, here's the current do-do list:
 
-# * double-clicking on a song (any of them) should take selections into account
-#   (if there are any).
 # * total times for selected songs.
 # * playlists (saving, renaming, deleting)
 # * After dropping songs onto the playlist, those songs need to be selected.
@@ -170,7 +168,7 @@ class UI(KMainWindow):
         self.__slider.sliderReleased.connect(self.__release_slider)
         layout.addWidget(splitter)
 
-        database_view = ItemView()
+        database_view = DatabaseView()
         splitter.addWidget(database_view)
         database_model = DatabaseModel(client)
         database_model.append_row(Playlists())
@@ -183,7 +181,6 @@ class UI(KMainWindow):
         database_model.append_row(Directory('/', 'drive-harddisk'))
         database_view.setModel(database_model)
         database_view.setDragEnabled(True)
-        database_view.doubleClicked.connect(database_model.handleDoubleClick)
         database_view.setHeaderHidden(True)
         playlist_view = PlaylistView()
 
@@ -370,6 +367,21 @@ class ItemView(QTreeView):
         return super(ItemView, self).viewportEvent(event)
 
 
+class DatabaseView(ItemView):
+
+    def __init__(self, parent=None):
+        super(DatabaseView, self).__init__(parent)
+        self.doubleClicked.connect(self.__handleDoubleClick)
+
+    def __handleDoubleClick(self, index):
+
+        if len(self.selectedIndexes()) == 1:
+            self.model().handleDoubleClick(index)
+            return
+
+        self.model().play_indexes(self.selectedIndexes(), index)
+
+
 class PlaylistView(ItemView):
 
     """ The playlist view. """
@@ -525,6 +537,20 @@ class ItemModel(QAbstractItemModel):
         if self.itemFromIndex(index).handleDoubleClick(self.__client):
             self.server_updated.emit()
 
+    def play_indexes(self, indexes, index):
+        """
+        For when adding selected indexes. Takes the indexes, and
+        the index to play.
+        """
+
+        self.client.clear()
+        for current_index in indexes:
+            song = self.itemFromIndex(current_index)
+            songid = self.client.addid(song['file'])
+            if index == current_index:
+                self.client.playid(songid)
+        self.server_updated.emit()
+
     @property
     def children(self):
         """ Returns an iterator for the children. """
@@ -598,9 +624,13 @@ class PlaylistModel(ItemModel):
         if data.hasFormat('x-application/vnd.mpd.uri'):
             encoded_data = data.data('x-application/vnd.mpd.uri')
             stream = QDataStream(encoded_data, QIODevice.ReadOnly)
+            uris = []
             while not stream.atEnd():
-                uri = stream.readString()
+                uris.append(stream.readString())
+            if row == -1:
+                uris.reverse()
 
+            for uri in uris:
                 if row == -1:
                     self.client.add(uri)
                 else:
