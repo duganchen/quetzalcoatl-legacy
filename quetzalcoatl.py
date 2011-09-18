@@ -44,18 +44,19 @@ import socket
 # Okay, here's the current do-do list:
 
 # * playlists (saving, renaming, deleting)
-# * After dropping songs onto the playlist, those songs need to be selected.
 # * get the configuration dialog working again (authentication, volume, single,
 #   consume, etc)
 # * album art downloading
 # * refreshing the server
 # * scrobbling
 # * Streams and podcasts (in addition to the music library)
+# * After dropping songs onto the playlist, those songs need to be selected.
 
 # Last.fm API key. Please don't steal this key
 # (If you're forking it, please get your own).
 LAST_FM_KEY = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
 API_ROOT = 'http://ws.audioscrobbler.com/2.0/'
+
 
 def main():
     appName = "Quetzalcoatl"
@@ -262,7 +263,7 @@ class UI(KMainWindow):
 
     def __release_slider(self):
         self.__slider_is_held = False
-    
+
     def __set_combined_time(self, time):
         self.__combined_time.setText(time)
 
