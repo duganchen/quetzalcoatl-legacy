@@ -43,7 +43,6 @@ import socket
 
 # Okay, here's the current do-do list:
 
-# * total times for selected songs.
 # * playlists (saving, renaming, deleting)
 # * After dropping songs onto the playlist, those songs need to be selected.
 # * get the configuration dialog working again (authentication, volume, single,
@@ -56,7 +55,7 @@ import socket
 # Last.fm API key. Please don't steal this key
 # (If you're forking it, please get your own).
 LAST_FM_KEY = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
-
+API_ROOT = 'http://ws.audioscrobbler.com/2.0/'
 
 def main():
     appName = "Quetzalcoatl"
@@ -183,6 +182,7 @@ class UI(KMainWindow):
         database_view.setDragEnabled(True)
         database_view.setHeaderHidden(True)
         playlist_view = PlaylistView()
+        playlist_view.combined_timed_changed.connect(self.__set_combined_time)
 
         delete.triggered.connect(playlist_view.delete_selected)
 
@@ -198,8 +198,8 @@ class UI(KMainWindow):
         playlist_model.server_updated.connect(poller.poll)
 
         self.__status_bar = self.statusBar()
-        combined_time = QLabel()
-        self.__status_bar.addPermanentWidget(combined_time)
+        self.__combined_time = QLabel()
+        self.__status_bar.addPermanentWidget(self.__combined_time)
 
         playlist_model.playlist_changed.connect(
                 playlist_view.resizeColumnsToContents)
@@ -262,6 +262,9 @@ class UI(KMainWindow):
 
     def __release_slider(self):
         self.__slider_is_held = False
+    
+    def __set_combined_time(self, time):
+        self.__combined_time.setText(time)
 
 
 class UIController(QObject):
@@ -358,8 +361,10 @@ class ItemView(QTreeView):
                     for tag in ('title', 'track', 'album', 'disc', 'artist',
                             'albumartist', 'composer', 'genre'):
                         if tag in song:
-                            tag_values.append('{0}: {1}'.format(tag,
-                                song[tag]))
+                            value = song[tag]
+                            if tag != 'track' and tag != 'disc':
+                                value = value.decode('utf-8')
+                            tag_values.append('{0}: {1}'.format(tag, value))
                 if len(tag_values) > 0:
                     QToolTip.showText(event.globalPos(), '\n'.join(tag_values))
                     return True
@@ -385,6 +390,8 @@ class DatabaseView(ItemView):
 class PlaylistView(ItemView):
 
     """ The playlist view. """
+    
+    combined_timed_changed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         """
@@ -403,6 +410,19 @@ class PlaylistView(ItemView):
 
     def delete_selected(self):
         self.model().delete(self.selectedIndexes())
+
+    def selectionChanged(self, selected, deselected):
+        if len(self.selectedIndexes()) == 0:
+            self.combined_timed_changed.emit('')
+            return
+
+        total_time = 0
+        for index in self.selectedIndexes():
+            song = index.internalPointer()
+            if 'time' in song:
+                total_time += song['time']
+
+        self.combined_timed_changed.emit(Item.time_str(total_time))
 
 
 class ItemModel(QAbstractItemModel):
