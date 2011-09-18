@@ -52,6 +52,24 @@ import socket
 # * Streams and podcasts (in addition to the music library)
 # * After dropping songs onto the playlist, those songs need to be selected.
 
+# A sample song (in the playlist) with with MusicBrainz tags looks like the
+# following:
+
+# [{'album': 'Melissa',
+# 'musicbrainz_artistid': '9b137ab6-5987-4606-989b-183cdb2d3e50',
+# 'title': 'Black Funeral',
+# 'track': '5',
+# 'id': '0',
+# 'artist': 'Mercyful Fate',
+# 'pos': '0',
+# 'musicbrainz_albumid': '5ecfeef5-d6df-4d09-b508-b4b31fca739a',
+# 'last-modified': '2011-09-18T06:22:21Z',
+# 'file': 'Mercyful Fate (1983) Melissa (2005 Remaster)/05 - Black Funeral.ogg',
+# 'time': '170',
+# 'genre': 'Heavy Metal',
+# 'musicbrainz_trackid': '9da425aa-3c0b-4d08-9ae3-afa56f864022',
+# 'date': '2005-08-30'}]
+
 # Last.fm API key. Please don't steal this key
 # (If you're forking it, please get your own).
 LAST_FM_KEY = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
@@ -745,12 +763,14 @@ class Item(object):
     """ A model item. """
 
     icons = {}
-    icons["audio-x-generic"] = QIcon(KIcon("audio-x-generic"))
-    icons["folder-documents"] = QIcon(KIcon("folder-documents"))
-    icons["server-database"] = QIcon(KIcon("server-database"))
-    icons["drive-harddisk"] = QIcon(KIcon("drive-harddisk"))
-    icons["folder-sound"] = QIcon(KIcon("folder-sound"))
-    icons["media-optical-audio"] = QIcon(KIcon("media-optical-audio"))
+    icons['view-media-playlist'] = QIcon(KIcon('view-media-playlist'))
+    icons['audio-x-generic'] = QIcon(KIcon('audio-x-generic'))
+    icons['folder-favorites'] = QIcon(KIcon('folder-favorites'))
+    icons['folder-documents'] = QIcon(KIcon('folder-documents'))
+    icons['server-database'] = QIcon(KIcon('server-database'))
+    icons['drive-harddisk'] = QIcon(KIcon('drive-harddisk'))
+    icons['folder-sound'] = QIcon(KIcon('folder-sound'))
+    icons['media-optical-audio'] = QIcon(KIcon('media-optical-audio'))
     icons['.ac3'] = QIcon(KIcon('audio-x-ac3'))
     icons['.flac'] = QIcon(KIcon('audio-x-flac'))
     icons['.ogg'] = QIcon(KIcon('audio-x-flac+ogg'))
@@ -1091,10 +1111,30 @@ class Playlists(ExpandableItem):
     """
 
     def __init__(self):
-        super(Playlists, self).__init__('Playlists', 'folder-documents')
+        super(Playlists, self).__init__('Playlists', 'folder-favorites')
 
     def fetch_more(self, client):
-        return []
+
+        # Sample listsplaylists() value:
+        # [{'last-modified': '2011-09-18T06:05:42Z', 'playlist': 'test'}]
+
+        return [Playlist(x['playlist']) for x
+                in sorted(client.listplaylists(),
+                          key=lambda x: x['playlist'].lower())]
+
+class Playlist(ExpandableItem):
+    """
+    Playlists->Playlist. Left side.
+    """
+    
+    def __init__(self, playlist):
+        super(Playlist, self).__init__(playlist, 'view-media-playlist')
+        self.__playlist = playlist
+    
+    def fetch_more(self, client):
+        # AlbumSong, for the double-click behavior.
+        return [RandomSong(x) for x
+                in client.listplaylistinfo(self.__playlist)]
 
 
 class Artists(ExpandableItem):
