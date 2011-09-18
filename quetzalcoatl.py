@@ -12,9 +12,13 @@ setapi("QUrl", 2)
 
 from sys import argv, exit
 from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
-from PyKDE4.kdeui import KAction, KApplication, KIcon, KMainWindow, KToggleAction
-from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray, QDataStream, QEvent, QIODevice, QMimeData, QModelIndex, QObject, QSize, Qt, QTimer
-from PyQt4.QtGui import QFont, QIcon, QKeySequence, QLabel, QSlider, QSplitter, QToolTip, QTreeView, QVBoxLayout, QWidget
+from PyKDE4.kdeui import KAction, KApplication, KIcon, KMainWindow
+from PyKDE4.kdeui import KToggleAction
+from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray
+from PyQt4.QtCore import QDataStream, QEvent, QIODevice, QMimeData
+from PyQt4.QtCore import QModelIndex, QObject, QSize, Qt, QTimer
+from PyQt4.QtGui import QFont, QIcon, QKeySequence, QLabel, QSlider, QSplitter
+from PyQt4.QtGui import QToolTip, QTreeView, QVBoxLayout, QWidget
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 from base64 import b64decode
@@ -32,19 +36,20 @@ import socket
 # Composers
 # Audiobooks
 
-# The play/pause button on both of my multimedia keyboards is Qt.Key_MediaPlay, not
-# Qt.Key_MediaTogglePlayPause.
+# The play/pause button on both of my multimedia keyboards is Qt.Key_MediaPlay,
+# not Qt.Key_MediaTogglePlayPause.
 
 # TO DO:
 
 # Okay, here's the current do-do list:
 
-# * double-clicking on a song (any of them) should take selections into account (if there are any).
+# * double-clicking on a song (any of them) should take selections into account
+#   (if there are any).
 # * total times for selected songs.
-# * tooltips
 # * playlists (saving, renaming, deleting)
 # * After dropping songs onto the playlist, those songs need to be selected.
-# * get the configuration dialog working again (authentication, volume, single, consume, etc)
+# * get the configuration dialog working again (authentication, volume, single,
+#   consume, etc)
 # * album art downloading
 # * refreshing the server
 # * scrobbling
@@ -53,6 +58,7 @@ import socket
 # Last.fm API key. Please don't steal this key
 # (If you're forking it, please get your own).
 LAST_FM_KEY = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
+
 
 def main():
     appName = "Quetzalcoatl"
@@ -73,6 +79,7 @@ def main():
     main.show()
     exit(app.exec_())
 
+
 class UI(KMainWindow):
 
     def __init__(self, client):
@@ -80,7 +87,7 @@ class UI(KMainWindow):
         self.setWindowIcon(KIcon("multimedia-player"))
         self.resize(800, 600)
         self.setWindowTitle('Quetzalcoatl')
-        
+
         client = Client({'host': 'localhost', 'port': 6600})
         controller = UIController(client, self)
         poller = Poller(client, self)
@@ -93,9 +100,9 @@ class UI(KMainWindow):
         self.setCentralWidget(centralWidget)
         layout = QVBoxLayout()
         centralWidget.setLayout(layout)
-        
+
         self.__toolbar = self.toolBar('ToolBar')
-        
+
         self.__toolbar.setToolBarsEditable(False)
         self.__toolbar.setToolBarsLocked(True)
         self.__toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly)
@@ -106,23 +113,28 @@ class UI(KMainWindow):
         stop_action.triggered.connect(controller.stop)
         self.__toolbar.addAction(stop_action)
 
-        self.__play_action = KAction(KIcon('media-playback-start'), 'Play', self)
+        self.__play_action = KAction(KIcon('media-playback-start'), 'Play',
+                self)
         self.__play_action.setShortcut(QKeySequence(Qt.Key_MediaPlay))
 
         self.__play_action.triggered.connect(controller.play)
         self.__toolbar.addAction(self.__play_action)
 
-        self.__pause_action = KAction(KIcon('media-playback-pause'), 'Pause', self)
+        self.__pause_action = KAction(KIcon('media-playback-pause'), 'Pause',
+                self)
         self.__pause_action.setShortcut(QKeySequence(Qt.Key_MediaPause))
 
         self.__pause_action.triggered.connect(controller.pause)
 
-        self.__skip_backward_action = KAction(KIcon('media-skip-backward'), 'Previous', self)
-        self.__skip_backward_action.setShortcut(QKeySequence(Qt.Key_MediaPrevious))
+        self.__skip_backward_action = KAction(KIcon('media-skip-backward'),
+                'Previous', self)
+        self.__skip_backward_action.setShortcut(QKeySequence(
+            Qt.Key_MediaPrevious))
         self.__skip_backward_action.triggered.connect(controller.skip_backward)
         self.__toolbar.addAction(self.__skip_backward_action)
 
-        skip_forward_action = KAction(KIcon('media-skip-forward'), 'Next', self)
+        skip_forward_action = KAction(KIcon('media-skip-forward'), 'Next',
+                self)
         skip_forward_action.setShortcut(QKeySequence(Qt.Key_MediaNext))
 
         skip_forward_action.triggered.connect(controller.skip_forward)
@@ -130,7 +142,8 @@ class UI(KMainWindow):
 
         self.__toolbar.addSeparator()
 
-        shuffle = KToggleAction(KIcon('media-playlist-shuffle'), 'Shuffle', self)
+        shuffle = KToggleAction(KIcon('media-playlist-shuffle'), 'Shuffle',
+                self)
         poller.shuffle_changed.connect(shuffle.setChecked)
         shuffle.toggled.connect(controller.set_shuffle)
         self.__toolbar.addAction(shuffle)
@@ -139,13 +152,14 @@ class UI(KMainWindow):
         poller.repeat_changed.connect(repeat.setChecked)
         repeat.toggled.connect(controller.set_repeat)
         self.__toolbar.addAction(repeat)
-        
+
         self.__toolbar.addSeparator()
-        
-        delete = KAction(KIcon('edit-delete'), 'Deleted selected playlist items', self)
+
+        delete = KAction(KIcon('edit-delete'),
+                'Deleted selected playlist items', self)
         delete.setShortcut(QKeySequence(Qt.Key_Delete))
         self.__toolbar.addAction(delete)
-        
+
         splitter = QSplitter()
         self.__slider = QSlider(Qt.Horizontal)
         self.__slider.setTracking(False)
@@ -172,9 +186,9 @@ class UI(KMainWindow):
         database_view.doubleClicked.connect(database_model.handleDoubleClick)
         database_view.setHeaderHidden(True)
         playlist_view = PlaylistView()
-        
+
         delete.triggered.connect(playlist_view.delete_selected)
-        
+
         splitter.addWidget(playlist_view)
 
         database_model.server_updated.connect(poller.poll)
@@ -185,13 +199,14 @@ class UI(KMainWindow):
         poller.song_id_changed.connect(playlist_model.set_songid)
         poller.song_id_changed.connect(controller.set_songid)
         playlist_model.server_updated.connect(poller.poll)
-        
+
         self.__status_bar = self.statusBar()
         combined_time = QLabel()
         self.__status_bar.addPermanentWidget(combined_time)
-            
-        playlist_model.playlist_changed.connect(playlist_view.resizeColumnsToContents)
-        
+
+        playlist_model.playlist_changed.connect(
+                playlist_view.resizeColumnsToContents)
+
         self.__state = 'STOP'
         self.__elapsed = 0
         self.__total = 0
@@ -203,86 +218,90 @@ class UI(KMainWindow):
         poller.poll()
         timer.start()
         playlist_view.setDragEnabled(True)
-        
-        
+
     def __set_time(self, elapsed, total):
         if self.__state != 'STOP':
             if self.__elapsed == elapsed and self.__total != total:
                 return
-        
-            self.__status_bar.showMessage('{0}/{1}'.format(Item.time_str(elapsed), Item.time_str(total)))
-            
+
+            self.__status_bar.showMessage('{0}/{1}'.format(
+                Item.time_str(elapsed), Item.time_str(total)))
+
             if not self.__slider_is_held:
                 if self.__total != total:
                     self.__slider.setMaximum(total)
                 if self.__elapsed != elapsed:
                     self.__slider.setSliderPosition(elapsed)
-            
+
             self.__elapsed = elapsed
             self.__total = total
-    
+
     def __set_state(self, state):
 
         if state != self.__state:
             self.__state = state
             actions = self.__toolbar.actions()
-    
+
             if self.__state == 'stop':
                 self.__status_bar.showMessage('')
                 self.__slider.setEnabled(False)
                 self.__slider.setSliderPosition(0)
-            
+
             if self.__state == 'play' and  self.__play_action in actions:
                 self.__toolbar.removeAction(self.__play_action)
-                self.__toolbar.insertAction(self.__skip_backward_action, self.__pause_action)
+                self.__toolbar.insertAction(self.__skip_backward_action,
+                        self.__pause_action)
                 self.__slider.setEnabled(True)
-            if self.__state == 'pause' or state == 'stop' and self.__pause_action in actions:
+            if self.__state == 'pause' or state == 'stop' and \
+                self.__pause_action in actions:
+
                 self.__toolbar.removeAction(self.__pause_action)
-                self.__toolbar.insertAction(self.__skip_backward_action, self.__play_action)
+                self.__toolbar.insertAction(self.__skip_backward_action,
+                        self.__play_action)
                 self.__slider.setEnabled(True)
-    
+
     def __hold_slider(self):
         self.__slider_is_held = True
-    
+
     def __release_slider(self):
         self.__slider_is_held = False
-        
+
 
 class UIController(QObject):
     """
     The UI class's slots.
     """
-    
+
     # To signal that we need to poll.
     server_updated = pyqtSignal()
 
-    def __init__(self, client, parent = None):
+    def __init__(self, client, parent=None):
         super(UIController, self).__init__(parent)
         self.__client = client
-        
+
         self.__state = 'STOP'
         self.__songid = None
         self.__repeat = False
         self.__shuffle = False
         self.__elapsed = 0
-    
+
     def set_songid(self, songid):
         self.__songid = songid
-    
+
     def setElapsed(self, value):
         self.__elapsed = value
-    
+
     def seekToElapsed(self):
         if self.__songid is not None and self.__state != 'stop':
             self.__client.seekid(self.__songid, self.__elapsed)
             self.server_updated.emit()
-    
+
     def set_repeat(self, value):
         if value != self.__repeat:
             self.__repeat = value
             self.__client.repeat(int(value))
             self.server_updated.emit()
-    
+
     def set_shuffle(self, value):
 
         if value != self.__shuffle:
@@ -295,7 +314,7 @@ class UIController(QObject):
         if self.__state != 'stop':
             self.__client.stop()
             self.server_updated.emit()
-    
+
     def play(self):
         if self.__state != 'play':
             self.__client.play()
@@ -305,7 +324,7 @@ class UIController(QObject):
         if self.__state != 'pause':
             self.__client.pause()
             self.server_updated.emit()
-    
+
     def skip_backward(self):
         self.__client.previous()
         self.server_updated.emit()
@@ -313,11 +332,12 @@ class UIController(QObject):
     def skip_forward(self):
         self.__client.next()
         self.server_updated.emit()
-    
+
     def set_state(self, state):
 
         if state != self.__state:
             self.__state = state
+
 
 class ItemView(QTreeView):
     def __init__(self, parent=None):
@@ -327,7 +347,7 @@ class ItemView(QTreeView):
         self.setIconSize(QSize(34, 34))
         self.setSelectionMode(self.ExtendedSelection)
         self.setDragEnabled(True)
-    
+
     def viewportEvent(self, event):
 
         if event.type() == QEvent.ToolTip:
@@ -335,47 +355,50 @@ class ItemView(QTreeView):
             if index.isValid():
                 song = index.internalPointer()
                 tag_values = []
-                
+
                 # Songs and non-songs (like 'Genres') have different flags.
                 if song.flags & Qt.ItemIsSelectable:
-                    for tag in ('title', 'track', 'album', 'disc', 'artist', 'albumartist', 'composer', 'genre'):
+                    for tag in ('title', 'track', 'album', 'disc', 'artist',
+                            'albumartist', 'composer', 'genre'):
                         if tag in song:
-                            tag_values.append('{0}: {1}'.format(tag, song[tag]))
+                            tag_values.append('{0}: {1}'.format(tag,
+                                song[tag]))
                 if len(tag_values) > 0:
                     QToolTip.showText(event.globalPos(), '\n'.join(tag_values))
                     return True
-    
+
         return super(ItemView, self).viewportEvent(event)
-            
+
 
 class PlaylistView(ItemView):
-    
+
     """ The playlist view. """
-    
+
     def __init__(self, parent=None):
         """
         Initializes to default values.
         """
 
         super(PlaylistView, self).__init__(parent)
-        self.setAcceptDrops(True);
-        self.setDropIndicatorShown(True);#        
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
 
         self.__is_resized = False
-    
+
     def resizeColumnsToContents(self):
         self.resizeColumnToContents(0)
         self.resizeColumnToContents(1)
-    
+
     def delete_selected(self):
         self.model().delete(self.selectedIndexes())
 
+
 class ItemModel(QAbstractItemModel):
-    
+
     """ The Quetzalcoatl item model. """
 
     server_updated = pyqtSignal()
-    
+
     def __init__(self, client, root, parent=None):
         super(ItemModel, self).__init__(parent)
         self.__root = root
@@ -392,7 +415,7 @@ class ItemModel(QAbstractItemModel):
         return None
 
     def flags(self, index):
-        
+
         item = self.itemFromIndex(index)
 
         if item != self.__root:
@@ -400,54 +423,54 @@ class ItemModel(QAbstractItemModel):
         return Qt.NoItemFlags
 
     def index(self, row, column, parent_index=QModelIndex()):
-        
+
         if not self.hasIndex(row, column, parent_index):
             return QModelIndex()
-        
+
         parent = self.itemFromIndex(parent_index)
         child = parent.child(row)
 
         if child:
             return self.createIndex(row, column, child)
         return QModelIndex()
-        
+
     def parent(self, index):
-        
+
         if not index.isValid():
             return QModelIndex()
-        
+
         child = index.internalPointer()
         parent = child.parent
-        
+
         if parent == self.__root:
             return QModelIndex()
-        
+
         return self.createIndex(parent.row, 0, parent)
-        
+
     def rowCount(self, parent_index=QModelIndex()):
-        
+
         if parent_index.column() > 0:
             return 0
 
         parent = self.itemFromIndex(parent_index)
         return parent.row_count
-        
+
     def columnCount(self, parent_index=QModelIndex()):
-        
+
         return len(self.__headers)
-    
+
     def itemFromIndex(self, index):
         if not index.isValid():
             return self.__root
         return index.internalPointer()
-    
+
     def canFetchMore(self, parent_index):
-        
+
         parent = self.itemFromIndex(parent_index)
         return parent.can_fetch_more
-    
+
     def fetchMore(self, parent_index):
-        
+
         parent = self.itemFromIndex(parent_index)
 
         try:
@@ -465,11 +488,10 @@ class ItemModel(QAbstractItemModel):
             parent.append_row(row)
         self.endInsertRows()
         parent.can_fetch_more = False
-            
+
     def hasChildren(self, parent_index=QModelIndex()):
         parent = self.itemFromIndex(parent_index)
         return parent.has_children
-        
 
     def append_row(self, item):
         """
@@ -485,7 +507,7 @@ class ItemModel(QAbstractItemModel):
         """
         Removes count rows from the root, starting at row.
         """
-        
+
         self.beginRemoveRows(QModelIndex(), row, row + count - 1)
         self.__root.remove_rows(row, count)
         self.endRemoveRows()
@@ -502,7 +524,7 @@ class ItemModel(QAbstractItemModel):
         """
         if self.itemFromIndex(index).handleDoubleClick(self.__client):
             self.server_updated.emit()
-    
+
     @property
     def children(self):
         """ Returns an iterator for the children. """
@@ -514,10 +536,10 @@ class DatabaseModel(ItemModel):
         root = Item()
         root.has_children = True
         super(DatabaseModel, self).__init__(client, root, parent)
-    
+
     def columnCount(self, parent_index=QModelIndex()):
         return 1
- 
+
     def mimeTypes(self):
         return ['x-application/vnd.mpd.uri']
 
@@ -529,10 +551,11 @@ class DatabaseModel(ItemModel):
         mime_data = QMimeData()
         mime_data.setData(self.mimeTypes()[0], encoded_data)
 
-        
         return mime_data
 
+
 class PlaylistModel(ItemModel):
+
     playlist_changed = pyqtSignal()
 
     def __init__(self, client, root, parent_index=None):
@@ -550,11 +573,11 @@ class PlaylistModel(ItemModel):
                 self.set_raw_data(song['pos'], song)
             else:
                 self.append_row(PlaylistItem(song))
-        
+
         self.playlist_changed.emit()
-   
+
     def dropMimeData(self, data, action, row, column, parent):
-        
+
         # MPD just doesn't have a single command to move a single song in the
         # playlist to the end. So songs in the playlist can only be dragged
         # to a valid drop point.
@@ -571,13 +594,13 @@ class PlaylistModel(ItemModel):
             self.playlist_changed.emit()
 
             return True
-        
+
         if data.hasFormat('x-application/vnd.mpd.uri'):
             encoded_data = data.data('x-application/vnd.mpd.uri')
             stream = QDataStream(encoded_data, QIODevice.ReadOnly)
             while not stream.atEnd():
                 uri = stream.readString()
-                
+
                 if row == -1:
                     self.client.add(uri)
                 else:
@@ -586,7 +609,7 @@ class PlaylistModel(ItemModel):
             self.server_updated.emit()
             self.playlist_changed.emit()
             return True
-            
+
         return False
 
     def flags(self, index):
@@ -610,41 +633,42 @@ class PlaylistModel(ItemModel):
             stream.writeUInt16(index.internalPointer()['id'])
         mime_data = QMimeData()
         mime_data.setData(self.mimeTypes()[0], encoded_data)
-        
+
         return mime_data
 
     def data(self, index, role=Qt.DisplayRole):
-        if role == Qt.FontRole and index.internalPointer()['id'] == self.__songid:
+        if role == Qt.FontRole and index.internalPointer()['id'] == \
+                self.__songid:
             font = QFont()
             font.setBold(True)
             return font
         else:
             return super(PlaylistModel, self).data(index, role)
-    
+
     def set_songid(self, value):
-        
+
         if self.__songid == value:
             return
-        
+
         old_id = self.__songid
         self.__songid = value
-        
+
         for row, song in enumerate(self.children):
-            
+
             # Clear the old song and bold the new one.
             if song['id'] == old_id or song['id'] == self.__songid:
                 self.dataChanged.emit(self.index(row, 0), self.index(row, 1))
-        
+
         self.playlist_changed.emit()
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
-        
+
         if self.__header_is_valid(section, orientation, role):
             return self.__headers[section]
         return None
 
     def __header_is_valid(self, section, orientation, role):
-        
+
         if section > len(self.__headers) - 1:
             return False
         if orientation != Qt.Horizontal:
@@ -652,9 +676,9 @@ class PlaylistModel(ItemModel):
         if role != Qt.DisplayRole:
             return False
         return True
-    
+
     def delete(self, indexes):
-        
+
         for id in set(index.internalPointer()['id'] for index in indexes):
             self.client.deleteid(id)
         self.server_updated.emit()
@@ -683,7 +707,6 @@ class Item(object):
     icons['.mid'] = QIcon(KIcon('audio-midi'))
     icons['.wav'] = QIcon(KIcon('audio-x-wav'))
 
-
     def __init__(self, parent=None):
         """
         Creates an Item with the most
@@ -704,12 +727,12 @@ class Item(object):
         """
         Returns the child at the specified row,
         or None if the row is invalid.
-        """ 
+        """
         try:
             return self.__child_items[row]
         except IndexError:
             return None
-    
+
     @property
     def children(self):
         """
@@ -721,44 +744,44 @@ class Item(object):
     def row_count(self):
         """ Returns the number of children. """
         return len(self.__child_items)
-    
+
     def data(self, index):
         """
         Returns data for the item's display role..
-        
+
         Default implementation returns nothing.
         """
-        
+
         return None
-    
+
     @property
     def row(self):
         """ Returns this item's row in its parent. """
-        
+
         if self.__parent_item:
             try:
                 return self.__parent_item.__child_items.index(self)
             except ValueError:
                 return -1
         return 0
-    
+
     @property
     def parent(self):
         """ Returns the parent item. """
         return self.__parent_item
-    
+
     @parent.setter
     def parent(self, value):
         """ Sets the parent item. """
         self.__parent_item = value
-    
+
     def remove_row(self, row):
         """
         Removes the item at the specified row.
         Does not emit signals.
         """
         del self.__child_items[row]
-    
+
     def remove_rows(self, row, count):
         """
         Removes the specified number of items,
@@ -766,15 +789,15 @@ class Item(object):
         Does not emit signals.
         """
         del self.__child_items[row:row + count]
-    
+
     @property
     def icon(self):
         """
         Returns the item's icon.
         """
-        
+
         return None
-    
+
     @property
     def can_fetch_more(self):
         """
@@ -782,34 +805,34 @@ class Item(object):
         more rows to fetch.
         """
         return self.__can_fetch_more
-    
+
     @can_fetch_more.setter
     def can_fetch_more(self, value):
         """
         Sets whether there are more rows to fetch.
         """
         self.__can_fetch_more = value
-    
+
     @property
     def has_children(self):
         """ Returns whether the item has children. """
         return self.__has_children
-    
+
     @has_children.setter
     def has_children(self, value):
         """ Sets whether the item has children. """
         self.__has_children = value
-    
+
     @property
     def flags(self):
         """ Returns the item's flags. """
         return self.__flags
-    
+
     @flags.setter
     def flags(self, value):
         """ Sets the items's flags. """
         self.__flags = value
-    
+
     def fetch_more(self, client):
         """
         Fetches and returns a list of child items.
@@ -825,7 +848,7 @@ class Item(object):
 
         Returns True the server information needs to be refreshed.
         """
-        
+
         return False
 
     @classmethod
@@ -847,49 +870,52 @@ class Item(object):
         seconds = dt % 60
         minutes = dt % 3600 / 60
         hours = dt / 3600
-        
+
         if hours == 0 and minutes == 0:
             return '0:{0:02}'.format(seconds)
         if hours == 0:
             return '{0:02}:{1:02}'.format(minutes, seconds)
         return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
 
+
 class Song(Item):
-    
+
     def __init__(self, song):
         super(Song, self).__init__(song)
-        self.flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled
+        self.flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | \
+                Qt.ItemIsDragEnabled
         self.has_children = False
         self.can_fetch_more = False
         self.set_raw_data(song)
         self.__icon = self.icons['audio-x-generic']
-    
+
     def __getitem__(self, key):
         return self.__song[key]
-    
+
     def __contains__(self, key):
         return key in self.__song
 
     def data(self, index):
         if index.column() == 0:
             return self.__label
-        
+
         if index.column() == 1:
             return self.__time
-    
+
         return None
-    
+
     @property
     def icon(self):
         return self.__icon
-    
+
     def set_raw_data(self, song):
         self.__song = song
         self.__label = self.title(song).decode('utf-8')
-        
+
         # Internet streams (which may be added by other clients, of course...)
         # don't have times.
         self.__time = self.time_str(song['time']) if 'time' in song else None
+
 
 class RandomSong(Song):
     """
@@ -907,16 +933,18 @@ class RandomSong(Song):
             client.playid(client.addid(self['file']))
         except (MPDError, socket.error) as e:
             print str(e)
-        
+
         return True
 
+
 class AlbumSong(Song):
+
     """
     Songs in the context of an album.
     """
-    
+
     # The double-click event should send the entire album to the playlist.
-    
+
     def __init__(self, song):
         super(AlbumSong, self).__init__(song)
 
@@ -926,20 +954,20 @@ class AlbumSong(Song):
 
         The callback gets called on completion.
         """
-        
+
         try:
             client.clear()
         except (MPDError, socket.error) as e:
             print str(e)
             return False
-        
+
         for uri in (song['file'] for song in self.parent.children):
             try:
                 songid = client.addid(uri)
             except (MPDError, socket.error) as e:
                 print str(e)
                 return False
-            
+
             if uri == self['file']:
                 try:
                     client.playid(songid)
@@ -948,11 +976,12 @@ class AlbumSong(Song):
                     return False
         return True
 
+
 class ExpandableItem(Item):
     """
     An expandable item. In the database model.
     """
-    
+
     def __init__(self, label, icon_name):
         """
         Takes a text label and the name of its icon.
@@ -969,7 +998,7 @@ class ExpandableItem(Item):
             return self.__label
 
         return None
-    
+
     @property
     def icon(self):
         return self.__icon
@@ -977,39 +1006,45 @@ class ExpandableItem(Item):
     @classmethod
     def has_tag(cls, song, tag):
         return tag in song and len(song[tag].strip()) > 0
-    
+
     @classmethod
     def match_tag(cls, song, tag, value):
         return tag in song and song[tag] == value
-    
+
     @classmethod
     def sorted_album(cls, songs):
-        track = lambda song: song['track'] if 'track' in song else cls.title(song)
+        track = lambda song: song['track'] if 'track' in song else\
+                cls.title(song)
         disc = lambda song: song['disc'] if 'disc' in song else None
-        return [AlbumSong(song) for song in sorted(sorted(songs, key=track), key=disc)]
+        return [AlbumSong(song) for song in sorted(sorted(songs, key=track),
+            key=disc)]
+
 
 class AllSongs(ExpandableItem):
     """
     The navigation node for all songs.
     """
-    
+
     def __init__(self):
         super(AllSongs, self).__init__('Songs', 'server-database')
 
     def fetch_more(self, client):
         songs = (x for x in client.listallinfo() if 'file' in x)
-        return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
+        return [RandomSong(x) for x in sorted(songs,
+            key=self.alphabetical_order)]
+
 
 class Playlists(ExpandableItem):
     """
     The node for the stored playlists.
     """
-    
+
     def __init__(self):
         super(Playlists, self).__init__('Playlists', 'folder-documents')
-    
+
     def fetch_more(self, client):
         return []
+
 
 class Artists(ExpandableItem):
     """
@@ -1018,10 +1053,12 @@ class Artists(ExpandableItem):
 
     def __init__(self):
         super(Artists, self).__init__('Artists', 'server-database')
-    
+
     def fetch_more(self, client):
-        artists = (artist for artist in client.list('artist') if len(artist.strip()) > 0)
+        artists = (artist for artist in client.list('artist')
+                if len(artist.strip()) > 0)
         return [Artist(artist) for artist in sorted(artists, key=str.lower)]
+
 
 class Artist(ExpandableItem):
     """
@@ -1031,13 +1068,15 @@ class Artist(ExpandableItem):
     def __init__(self, artist):
         super(Artist, self).__init__(artist, 'folder-sound')
         self.__artist = artist
-    
+
     def fetch_more(self, client):
         works = [ArtistSongs(self.__artist)]
-        albums = (album for album in client.list('album', self.__artist) if len(album.strip()) > 0)
+        albums = (album for album in client.list('album', self.__artist)
+                if len(album.strip()) > 0)
         works.extend([ArtistAlbum(self.__artist, album)
                 for album in sorted(albums, key=str.lower)])
         return works
+
 
 class ArtistSongs(ExpandableItem):
     """
@@ -1046,20 +1085,25 @@ class ArtistSongs(ExpandableItem):
     def __init__(self, artist):
         super(ArtistSongs, self).__init__('All Songs', 'server-database')
         self.__artist = artist
-    
+
     def fetch_more(self, client):
         songs = (x for x in client.find('artist', self.__artist))
-        return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
+        return [RandomSong(x) for x in sorted(songs,
+            key=self.alphabetical_order)]
+
 
 class ArtistAlbum(ExpandableItem):
-    
+
     def __init__(self, artist, album):
         super(ArtistAlbum, self).__init__(album, 'media-optical-audio')
         self.__artist = artist
         self.__album = album
-    
+
     def fetch_more(self, client):
-        return self.sorted_album(song for song in client.find('album', self.__album) if 'artist' in song and song['artist'] == self.__artist)
+        return self.sorted_album(song for song
+                in client.find('album', self.__album)
+                if 'artist' in song and song['artist'] == self.__artist)
+
 
 class Albums(ExpandableItem):
     """
@@ -1068,22 +1112,25 @@ class Albums(ExpandableItem):
 
     def __init__(self):
         super(Albums, self).__init__('Albums', 'server-database')
-    
+
     def fetch_more(self, client):
-        albums = (album for album in client.list('album') if len(album.strip()) > 0)
+        albums = (album for album in client.list('album')
+                if len(album.strip()) > 0)
         return [Album(album) for album in sorted(albums, key=str.lower)]
+
 
 class Album(ExpandableItem):
     """
     Albums -> Album
     """
-    
+
     def __init__(self, album):
         super(Album, self).__init__(album, 'media-optical-audio')
         self.__album = album
-    
+
     def fetch_more(self, client):
         return self.sorted_album(client.find('album', self.__album))
+
 
 class Compilations(ExpandableItem):
     """
@@ -1092,22 +1139,27 @@ class Compilations(ExpandableItem):
 
     def __init__(self):
         super(Compilations, self).__init__('Compilations', 'server-database')
-    
+
     def fetch_more(self, client):
-        album_artists = (album_artist for album_artist in client.list('albumartist') if len(album_artist.strip()) > 0)
-        return [Compilation(artist) for artist in sorted(album_artists, key=str.lower)]
+        album_artists = (album_artist for album_artist
+                in client.list('albumartist')
+                if len(album_artist.strip()) > 0)
+        return [Compilation(artist) for artist
+                in sorted(album_artists, key=str.lower)]
+
 
 class Compilation(ExpandableItem):
     """
     Compilations -> Compilation
     """
-    
+
     def __init__(self, artist):
         super(Compilation, self).__init__(artist, 'folder-sound')
         self.__artist = artist
-    
-    def fetch_more(self, client): 
+
+    def fetch_more(self, client):
         return self.sorted_album(client.find('albumartist', self.__artist))
+
 
 class Genres(ExpandableItem):
     """
@@ -1116,10 +1168,12 @@ class Genres(ExpandableItem):
 
     def __init__(self):
         super(Genres, self).__init__('Genres', 'server-database')
-    
+
     def fetch_more(self, client):
-        genres = (genre for genre in client.list('genre') if len(genre.strip()) > 0)
+        genres = (genre for genre in client.list('genre')
+                if len(genre.strip()) > 0)
         return [Genre(genre) for genre in sorted(genres, key=str.lower)]
+
 
 class Genre(ExpandableItem):
     """
@@ -1129,10 +1183,11 @@ class Genre(ExpandableItem):
     def __init__(self, genre):
         super(Genre, self).__init__(genre, 'folder-sound')
         self.__genre = genre
-    
+
     def fetch_more(self, client):
         works = [GenreSongs(self.__genre)]
-        raw_artists = (song['artist'] for song in client.find('genre', self.__genre) if self.__is_valid(song))
+        raw_artists = (song['artist'] for song in client.find('genre',
+            self.__genre) if self.__is_valid(song))
         artists = sorted(set(raw_artists), key=str.lower)
         works.extend([GenreArtist(self.__genre, artist) for artist in artists])
         return works
@@ -1141,6 +1196,7 @@ class Genre(ExpandableItem):
     def __is_valid(self, song):
         return self.has_tag(song, 'artist') and self.has_tag(song, 'album')
 
+
 class GenreSongs(ExpandableItem):
     """
     Genres->Genre->All Songs
@@ -1148,10 +1204,12 @@ class GenreSongs(ExpandableItem):
     def __init__(self, genre):
         super(GenreSongs, self).__init__('All Songs', 'server-database')
         self.__genre = genre
-    
+
     def fetch_more(self, client):
         songs = (x for x in client.find('genre', self.__genre))
-        return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
+        return [RandomSong(x) for x in sorted(songs,
+            key=self.alphabetical_order)]
+
 
 class GenreArtist(ExpandableItem):
     """
@@ -1162,16 +1220,20 @@ class GenreArtist(ExpandableItem):
         super(GenreArtist, self).__init__(artist, 'folder-sound')
         self.__genre = genre
         self.__artist = artist
-    
+
     def fetch_more(self, client):
         works = [GenreArtistSongs(self.__genre, self.__artist)]
-        raw_albums = (song['album'] for song in client.find('artist', self.__artist) if self.__is_valid(song))
+        raw_albums = (song['album'] for song in client.find('artist',
+            self.__artist) if self.__is_valid(song))
         albums = sorted(set(raw_albums), key=str.lower)
-        works.extend([GenreArtistAlbum(self.__genre, self.__artist, album) for album in albums])
+        works.extend([GenreArtistAlbum(self.__genre, self.__artist, album)
+            for album in albums])
         return works
-    
+
     def __is_valid(self, song):
-        return self.match_tag(song, 'genre', self.__genre) and self.has_tag(song, 'album')
+        return self.match_tag(song, 'genre',
+                self.__genre) and self.has_tag(song, 'album')
+
 
 class GenreArtistSongs(ExpandableItem):
     """
@@ -1181,29 +1243,35 @@ class GenreArtistSongs(ExpandableItem):
         super(GenreArtistSongs, self).__init__('All Songs', 'server-database')
         self.__genre = genre
         self.__artist = artist
-    
+
     def fetch_more(self, client):
-        songs = (song for song in client.find('artist', self.__artist) if self.match_tag(song, 'genre', self.__genre))
-        return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
+        songs = (song for song in client.find('artist', self.__artist)
+                if self.match_tag(song, 'genre', self.__genre))
+        return [RandomSong(x) for x
+                in sorted(songs, key=self.alphabetical_order)]
+
 
 class GenreArtistAlbum(ExpandableItem):
-    
+
     """
     Genres -> Genre -> Artist -> Album
     """
-    
+
     def __init__(self, genre, artist, album):
         super(GenreArtistAlbum, self).__init__(album, 'media-optical-audio')
         self.__genre = genre
         self.__artist = artist
         self.__album = album
-        
+
     def fetch_more(self, client):
         album_songs = client.find('album', self.__album)
-        return self.sorted_album(song for song in album_songs if 'genre' in song and self.__is_valid(song))
-    
+        return self.sorted_album(song for song in album_songs
+                if 'genre' in song and self.__is_valid(song))
+
     def __is_valid(self, song):
-        return self.match_tag(song, 'genre', self.__genre) and self.match_tag(song, 'artist', self.__artist)
+        return self.match_tag(song, 'genre', self.__genre) and self.match_tag(
+                song, 'artist', self.__artist)
+
 
 class Composers(ExpandableItem):
     """
@@ -1212,10 +1280,13 @@ class Composers(ExpandableItem):
 
     def __init__(self):
         super(Composers, self).__init__('Composers', 'server-database')
-    
+
     def fetch_more(self, client):
-        composers = (composer for composer in client.list('composer') if len(composer.strip()) > 0)
-        return [Composer(composer) for composer in sorted(composers, key=str.lower)]
+        composers = (composer for composer in client.list('composer')
+                if len(composer.strip()) > 0)
+        return [Composer(composer) for composer
+                in sorted(composers, key=str.lower)]
+
 
 class Composer(ExpandableItem):
     """
@@ -1224,16 +1295,20 @@ class Composer(ExpandableItem):
     def __init__(self, composer):
         super(Composer, self).__init__(composer, 'folder-sound')
         self.__composer = composer
-    
+
     def fetch_more(self, client):
         works = [ComposerSongs(self.__composer)]
-        raw_albums = (song['album'] for song in client.find('composer', self.__composer) if self.__is_valid(song))
+        raw_albums = (song['album'] for song
+                in client.find('composer', self.__composer)
+                if self.__is_valid(song))
         albums = sorted(set(raw_albums), key=str.lower)
-        works.extend([ComposerAlbum(self.__composer, album) for album in albums])
+        works.extend([ComposerAlbum(self.__composer, album) for album
+            in albums])
         return works
-    
+
     def __is_valid(self, song):
         return self.has_tag(song, 'album')
+
 
 class ComposerSongs(ExpandableItem):
     """
@@ -1242,10 +1317,12 @@ class ComposerSongs(ExpandableItem):
     def __init__(self, composer):
         super(ComposerSongs, self).__init__('All Songs', 'server-database')
         self.__composer = composer
-    
+
     def fetch_more(self, client):
         songs = (x for x in client.find('composer', self.__composer))
-        return [RandomSong(x) for x in sorted(songs, key=self.alphabetical_order)]
+        return [RandomSong(x) for x in sorted(songs,
+            key=self.alphabetical_order)]
+
 
 class ComposerAlbum(ExpandableItem):
     """
@@ -1255,9 +1332,12 @@ class ComposerAlbum(ExpandableItem):
         super(ComposerAlbum, self).__init__(album, 'media-optical-audio')
         self.__composer = composer
         self.__album = album
-    
+
     def fetch_more(self, client):
-        return self.sorted_album(song for song in client.find('album', self.__album) if self.match_tag(song, 'composer', self.__composer))
+        return self.sorted_album(song for song
+                in client.find('album', self.__album)
+                if self.match_tag(song, 'composer', self.__composer))
+
 
 class Directory(ExpandableItem):
     """
@@ -1268,14 +1348,16 @@ class Directory(ExpandableItem):
         super(Directory, self).__init__(root, icon)
         self.__label = basename(root) if basename(root) == '' else root
         self.__root = root
-    
+
     def fetch_more(self, client):
         listing = client.lsinfo(self.__root)
-        directories = [Directory(directory, 'folder-sound') for directory in sorted((x['directory'] for x in listing if 'directory' in x),
-                     key=str.lower)]
+        directories = [Directory(directory, 'folder-sound') for directory
+                in sorted((x['directory'] for x in listing
+                    if 'directory' in x), key=str.lower)]
 
-        files = [RandomSong(song) for song in sorted((x for x in listing if 'file' in x), key=self.alphabetical_order)]
-        
+        files = [RandomSong(song) for song in sorted((x for x in listing
+            if 'file' in x), key=self.alphabetical_order)]
+
         directories.extend(files)
         return directories
 
@@ -1286,10 +1368,11 @@ class PlaylistItem(Song):
     """
     def __init__(self, song):
         super(PlaylistItem, self).__init__(song)
-    
+
     def handleDoubleClick(self, client):
         client.playid(self['id'])
         return True
+
 
 class Poller(QObject):
 
@@ -1339,22 +1422,23 @@ class Poller(QObject):
         if self.__is_changed(status, 'time') and 'time' in status:
             elapsed, total = status['time']
             self.time_changed.emit(elapsed, total)
-            
+
         if self.__is_changed(status, 'songid'):
             if 'songid' in status:
                 self.song_id_changed.emit(status['songid'])
             else:
                 self.song_id_changed.emit(None)
-        
+
         if 'playlist' in status:
             if 'playlist' in self.__status:
                 if self.__is_changed(status, 'playlist'):
-                    self.playlist_changed.emit(sorted(self.__client.plchanges(self.__status['playlist']),
-                        key=lambda x: x['pos']), status['playlistlength'])
+                    self.playlist_changed.emit(sorted(self.__client.plchanges(
+                        self.__status['playlist']), key=lambda x: x['pos']),
+                        status['playlistlength'])
             else:
                 self.playlist_changed.emit(sorted(self.__client.playlistinfo(),
                     key=lambda x: x['pos']), status['playlistlength'])
-        
+
         self.__status = status
 
     def __set_is_connected(self, is_connected):
@@ -1368,19 +1452,19 @@ class Poller(QObject):
             self.__reset()
 
     def __is_changed(self, new_status, key):
-        
+
         if not key in self.__status and not key in new_status:
             return False
-        
+
         if not key in self.__status and key in new_status:
             return True
-        
+
         if key in self.__status and not key in new_status:
             return True
-        
+
         if self.__status[key] != new_status[key]:
             return True
-        
+
         return False
 
     def __reset(self):
@@ -1452,6 +1536,7 @@ class Client(QObject):
             self.__poller = None
             raise e
 
+
 class SanitizedClient(object):
 
     """
@@ -1510,17 +1595,17 @@ class SanitizedClient(object):
     def __sanitize_time(cls, value):
         """
         Returns the sanitized value of time.
-        
+
         value might be in one of two formats:
             'time': '2:151' (elapsed:total)
             'time': '151' (total only)
         """
-        
+
         if ':' in value:
             tokens = value.split(':')
             return tuple([int(x) for x in tokens])
         return int(value)
-    
+
     @classmethod
     def __sanitize_playlist(cls, value):
         """
@@ -1549,7 +1634,7 @@ class SanitizedClient(object):
         if type(value) == list:
             value = ", ".join(set(value))
         return value
-    
+
     @classmethod
     def __sanitized_track(cls, value):
         """
@@ -1596,7 +1681,7 @@ class SanitizedClient(object):
         Given a dictionary returned by MPD, sanitizes
         its values to the appropriate types.
         """
-        
+
         for key, value in dictionary.items():
             if key in self.__sanitizers:
                 dictionary[key] = self.__sanitizers[key](value)
@@ -1613,6 +1698,7 @@ class SanitizedClient(object):
             return lambda *args: self.__command(attribute, *args)
         return attribute
 
+
 class Options(object):
 
     # Future versions will use KDE's data store
@@ -1628,7 +1714,3 @@ class Options(object):
 
 if __name__ == "__main__":
     main()
-
-
-
-
