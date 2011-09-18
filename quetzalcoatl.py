@@ -17,6 +17,7 @@ from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray, QDataStream
 from PyQt4.QtGui import QFont, QHBoxLayout, QIcon, QKeySequence, QLabel, QSlider, QSplitter, QTreeView, QVBoxLayout, QWidget
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
+from base64 import b64decode
 import socket
 
 
@@ -38,27 +39,27 @@ import socket
 
 # Okay, here's the current do-do list:
 
-# * After dropping songs onto the playlist, those songs need to be selected.
 # * double-clicking on a song (any of them) should take selections into account (if there are any).
+# * total times for selected songs.
+# * tooltips
 # * playlists (saving, renaming, deleting)
-# * Directories should be double-clickable and double-clicking them should add
-#   the directory to the playlist recursively.
+# * After dropping songs onto the playlist, those songs need to be selected.
 # * get the configuration dialog working again (authentication, volume, single, consume, etc)
 # * album art downloading
 # * refreshing the server
 # * scrobbling
 # * Streams and podcasts (in addition to the music library)
 
-# Last.fm API key. Base64-encoded. Please don't steal this key
-# (if you're forking it, please get your own).
-LAST_FM_KEY_BASE64 = 'Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk='
+# Last.fm API key. Please don't steal this key
+# (If you're forking it, please get your own).
+LAST_FM_KEY = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
 
 def main():
     appName = "Quetzalcoatl"
     catalog = ""
     programName = ki18n("Quetzalcoatl")
     version = "2.0"
-    description = ki18n("mpd client")
+    description = ki18n("MPD client")
     license = KAboutData.License_GPL
     copyright = ki18n("(c) 2009 Dugan Chen")
     text = ki18n("none")
@@ -66,7 +67,6 @@ def main():
     bugEmail = "see homepage"
     aboutData = KAboutData(appName, catalog, programName, version, \
     description, license, copyright, text, homePage, bugEmail)
-
     KCmdLineArgs.init(argv, aboutData)
     app = KApplication()
     main = UI(None)
@@ -539,21 +539,16 @@ class PlaylistModel(ItemModel):
     def dropMimeData(self, data, action, row, column, parent):
         
         # MPD just doesn't have a single command to move a single song in the
-        # playlist to the end.
+        # playlist to the end. So songs in the playlist can only be dragged
+        # to a valid drop point.
         if data.hasFormat('x-application/vnd.mpd.songid') and row != -1:
             encoded_data = data.data('x-application/vnd.mpd.songid')
             stream = QDataStream(encoded_data, QIODevice.ReadOnly)
-            root = self.itemFromIndex(QModelIndex())
-            dest_row = row
             while not stream.atEnd():
                 source_row = stream.readUInt16()
-                item = root.child(source_row)
-                songid = item['id']
-                if source_row < dest_row:
-                    self.client.moveid(songid, dest_row - 1)
-                else:
-                    self.client.moveid(songid, dest_row)
-                    dest_row += 1
+                songid = stream.readUInt16()
+                dest_row = row - 1 if source_row < row else row
+                self.client.moveid(songid, dest_row)
 
             self.server_updated.emit()
             self.playlist_changed.emit()
@@ -593,12 +588,11 @@ class PlaylistModel(ItemModel):
     def mimeData(self, indexes):
         encoded_data = QByteArray()
         stream = QDataStream(encoded_data, QIODevice.WriteOnly)
-        for row in sorted(set(self.itemFromIndex(x).row
-                for x in indexes if x.isValid())):
-            stream.writeUInt16(row)
+        for index in sorted(indexes, key=lambda x: x.row(), reverse=True):
+            stream.writeUInt16(index.row())
+            stream.writeUInt16(index.internalPointer()['id'])
         mime_data = QMimeData()
         mime_data.setData(self.mimeTypes()[0], encoded_data)
-
         
         return mime_data
 
