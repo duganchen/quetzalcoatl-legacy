@@ -1243,8 +1243,21 @@ class Compilations(ExpandableItem):
         album_artists = (album_artist for album_artist
                 in client.list('albumartist')
                 if len(album_artist.strip()) > 0)
-        return [Compilation(artist) for artist
+        return [AlbumArtist(artist) for artist
                 in sorted(album_artists, key=str.lower)]
+
+
+class AlbumArtist(ExpandableItem):
+
+    def __init__(self, albumartist):
+        super(AlbumArtist, self).__init__(albumartist, 'folder-sound')
+        self.__albumartist = albumartist
+
+    def fetch_more(self, client):
+        return [Compilation(self.__albumartist, album) for album
+                in sorted(set(song['album'] for song
+                    in client.find('albumartist', self.__albumartist)
+                    if self.has_tag(song, 'album')), key=str.lower)]
 
 
 class Compilation(ExpandableItem):
@@ -1252,12 +1265,15 @@ class Compilation(ExpandableItem):
     Compilations -> Compilation
     """
 
-    def __init__(self, artist):
-        super(Compilation, self).__init__(artist, 'folder-sound')
-        self.__artist = artist
+    def __init__(self, albumartist, album):
+        super(Compilation, self).__init__(album, 'media-optical-audio')
+        self.__albumartist = albumartist
+        self.__album = album
 
     def fetch_more(self, client):
-        return self.sorted_album(client.find('albumartist', self.__artist))
+        return self.sorted_album(song for song
+                in client.find('album', self.__album)
+                if self.match_tag(song, 'albumartist', self.__albumartist))
 
 
 class Genres(ExpandableItem):
