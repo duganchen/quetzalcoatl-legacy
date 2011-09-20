@@ -239,7 +239,7 @@ class UI(KMainWindow):
         timer.start()
         playlist_view.setDragEnabled(True)
         
-        save_playlist.triggered.connect(playlist_model.save)
+        save_playlist.triggered.connect(controller.save_playlist)
 
     def __set_time(self, elapsed, total):
         if self.__state != 'STOP':
@@ -364,7 +364,7 @@ class UIController(QObject):
             self.__state = state
     
     def save_playlist(self):
-        self.__client.
+        self.__client.save()
 
 class ItemView(QTreeView):
     def __init__(self, parent=None):
@@ -1585,14 +1585,20 @@ class Client(QObject):
         super(Client, self).__init__(parent)
         self.__options = options
         self.__poller = None
+        self.__idler = None
+        self.__wrapped_poller = None
 
     def open(self):
 
         if self.__poller is None:
-            client = MPDClient()
+            self.__poller = MPDClient()
             try:
-                client.connect(self.__options['host'], self.__options['port'])
-                self.__poller = SanitizedClient(client)
+                self.__poller.connect(self.__options['host'],
+                        self.__options['port'])
+                self.__wrapped_poller = SanitizedClient(self.__poller)
+                self.__idler = MPDClient()
+                self.__idler.connect(self.__options['host'],
+                        self.__options['port'])
                 self.is_connected_changed.emit(True)
             except (MPDError, socket.error) as e:
                 self.__poller = None
@@ -1605,6 +1611,17 @@ class Client(QObject):
             except:
                 pass
             self.__poller = None
+
+            try:
+                self.__idler.noidle()
+            except:
+                pass
+
+            try:
+                self.__idler.disconnect()
+            except:
+                pass
+
             self.is_connected_changed.emit(False)
 
     def __getattr__(self, attr):
@@ -1618,7 +1635,7 @@ class Client(QObject):
             self.open()
             # Any exceptions raised here will have propagated.
 
-        attribute = getattr(self.__poller, attr)
+        attribute = getattr(self.__wrapped_poller, attr)
         if hasattr(attribute, "__call__"):
             return lambda *args: self.__wrapper(attribute, *args)
         return attribute
@@ -1633,7 +1650,18 @@ class Client(QObject):
 
             self.is_connected_changed.emit(False)
             self.__poller = None
+            self.__wrapped_poller = None
             raise e
+    
+    @property
+    def poller(self):
+        # Just the client. For use in SELECT calls.
+        return self.__poller
+
+    @property
+    def idler(self):
+        # Just the client. For use in SELECT calls.
+        return self.__idler
 
 
 class SanitizedClient(object):
