@@ -64,7 +64,8 @@ import socket
 # 'pos': '0',
 # 'musicbrainz_albumid': '5ecfeef5-d6df-4d09-b508-b4b31fca739a',
 # 'last-modified': '2011-09-18T06:22:21Z',
-# 'file': 'Mercyful Fate (1983) Melissa (2005 Remaster)/05 - Black Funeral.ogg',
+# 'file':
+# 'Mercyful Fate (1983) Melissa (2005 Remaster)/05 - Black Funeral.ogg',
 # 'time': '170',
 # 'genre': 'Heavy Metal',
 # 'musicbrainz_trackid': '9da425aa-3c0b-4d08-9ae3-afa56f864022',
@@ -175,8 +176,9 @@ class UI(KMainWindow):
                 '[DEL]ete selected playlist items', self)
         delete.setShortcut(QKeySequence(Qt.Key_Delete))
         self.__toolbar.addAction(delete)
-        
-        save_playlist = KAction(KIcon('document-save-all'), '[CTRL-S]ave playlist', self)
+
+        save_playlist = KAction(KIcon('document-save-all'),
+                '[CTRL-S]ave playlist', self)
         save_playlist.setShortcut(QKeySequence('CTRL+S'))
         self.__toolbar.addAction(save_playlist)
 
@@ -238,7 +240,7 @@ class UI(KMainWindow):
         poller.poll()
         timer.start()
         playlist_view.setDragEnabled(True)
-        
+
         save_playlist.triggered.connect(controller.save_playlist)
 
     def __set_time(self, elapsed, total):
@@ -362,9 +364,10 @@ class UIController(QObject):
 
         if state != self.__state:
             self.__state = state
-    
+
     def save_playlist(self):
         self.__client.save()
+
 
 class ItemView(QTreeView):
     def __init__(self, parent=None):
@@ -417,7 +420,7 @@ class DatabaseView(ItemView):
 class PlaylistView(ItemView):
 
     """ The playlist view. """
-    
+
     combined_timed_changed = pyqtSignal(str)
 
     def __init__(self, parent=None):
@@ -439,6 +442,8 @@ class PlaylistView(ItemView):
         self.model().delete(self.selectedIndexes())
 
     def selectionChanged(self, selected, deselected):
+        super(PlaylistView, self).selectionChanged(selected, deselected)
+
         if len(self.selectedIndexes()) == 0:
             self.combined_timed_changed.emit('')
             return
@@ -1130,15 +1135,16 @@ class Playlists(ExpandableItem):
                 in sorted(client.listplaylists(),
                           key=lambda x: x['playlist'].lower())]
 
+
 class Playlist(ExpandableItem):
     """
     Playlists->Playlist. Left side.
     """
-    
+
     def __init__(self, playlist):
         super(Playlist, self).__init__(playlist, 'view-media-playlist')
         self.__playlist = playlist
-    
+
     def fetch_more(self, client):
         # AlbumSong, for the double-click behavior.
         return [RandomSong(x) for x
@@ -1668,7 +1674,7 @@ class Client(QObject):
             self.__poller = None
             self.__wrapped_poller = None
             raise e
-    
+
     @property
     def poller(self):
         # Just the client. For use in SELECT calls.
