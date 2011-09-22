@@ -10,6 +10,7 @@ setapi("QVariant", 2)
 setapi("QString", 2)
 setapi("QUrl", 2)
 
+from datetime import datetime
 from sys import argv, exit
 from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
 from PyKDE4.kdeui import KAction, KApplication, KIcon, KMainWindow
@@ -1738,6 +1739,13 @@ class SanitizedClient(object):
         self.__sanitizers['albumartist'] = self.__sanitize_tag
         self.__sanitizers['mixrampdb'] = float
         self.__sanitizers['disc'] = self.__sanitized_track
+
+        # Converting server timestamps from UTC to local would require
+        # adding dateutil as a dependency. So we don't.
+
+        self.__sanitizers['last-modified'] = lambda x: datetime.strptime(x,
+                '%Y-%m-%dT%H:%M:%SZ')
+
         self.__client = client
 
     @classmethod
