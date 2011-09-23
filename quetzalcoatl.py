@@ -13,12 +13,14 @@ setapi("QUrl", 2)
 from datetime import datetime
 from sys import argv, exit
 from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
-from PyKDE4.kdeui import KAction, KApplication, KDialog, KIcon, KLineEdit, KMainWindow
-from PyKDE4.kdeui import KToggleAction
+from PyKDE4.kdeui import KAction, KApplication, KDialog, KIcon, KLineEdit
+from PyKDE4.kdeui import KMainWindow
+from PyKDE4.kdeui import KMessageBox, KToggleAction
 from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray
 from PyQt4.QtCore import QDataStream, QEvent, QIODevice, QMimeData
 from PyQt4.QtCore import QModelIndex, QObject, QRegExp, QSize, Qt, QTimer
-from PyQt4.QtGui import QFont, QFormLayout, QIcon, QKeySequence, QLabel, QSlider, QRegExpValidator, QSplitter
+from PyQt4.QtGui import QFont, QFormLayout, QIcon, QKeySequence, QLabel
+from PyQt4.QtGui import QSlider, QRegExpValidator, QSplitter
 from PyQt4.QtGui import QToolTip, QTreeView, QVBoxLayout, QWidget
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
@@ -242,8 +244,6 @@ class UI(KMainWindow):
         timer.start()
         playlist_view.setDragEnabled(True)
 
-        save_playlist.triggered.connect(controller.save_playlist)
-        
         playlist_saver = PlaylistSaver(client, self)
         save_playlist.triggered.connect(playlist_saver.show)
 
@@ -369,9 +369,6 @@ class UIController(QObject):
         if state != self.__state:
             self.__state = state
 
-    def save_playlist(self):
-        self.__client.save()
-
 
 class PlaylistSaver(KDialog):
 
@@ -387,29 +384,41 @@ class PlaylistSaver(KDialog):
         self.__name = PlaylistSaver.createLineEdit(self)
         layout.addRow(self.tr("&Name"), self.__name)
         self.setMainWidget(body)
-        self.okClicked.connect(self.accept)
 
     def accept(self):
+        print 'accepting'
         try:
             name = self.__name.text().strip()
-            if PlaylistSaver.isOkay(name.encode("utf-8"), self):
+            if self.isOkay(name.encode("utf-8"), self):
                 self.__client.save(name.encode('utf-8'))
-                self.accept()
-            else:
-                self.reject()
         except (MPDError, socket.error) as e:
             print str(e)
 
-    @classmethod
-    def createLineEdit(cls, parent, inDelegate = False):
-        # Again, also called by the Playlists Delegate.
-        # The inView parameter is there because the PlaylistsDelegate
-        # needs a KLineEdit created differently.
+    def isOkay(self, name, parent):
 
-        if inDelegate:
-            lineEdit = KLineEdit("", parent)
-        else:
-            lineEdit = KLineEdit()
+        if len(name) == 0:
+            return False
+
+        if name[0] == ".":
+            KMessageBox.error(parent, "Playlist names may not begin "\
+            "with a period.")
+            return False
+
+        matched = False
+        for check in self.__client.listplaylists():
+            if check["playlist"] == name:
+                matched = True
+                break
+        if matched:
+            KMessageBox.error(parent, "A playlist by that name "\
+            "already exists.")
+            return False
+
+        return True
+
+    @classmethod
+    def createLineEdit(cls, parent):
+        lineEdit = KLineEdit()
         rx = QRegExp("^[^\/]+$")
         lineEdit.setValidator(QRegExpValidator(rx, parent))
         # Plus dot, plus extension, makes 255.
