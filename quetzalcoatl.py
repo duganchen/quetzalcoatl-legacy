@@ -13,12 +13,12 @@ setapi("QUrl", 2)
 from datetime import datetime
 from sys import argv, exit
 from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
-from PyKDE4.kdeui import KAction, KApplication, KIcon, KMainWindow
+from PyKDE4.kdeui import KAction, KApplication, KDialog, KIcon, KLineEdit, KMainWindow
 from PyKDE4.kdeui import KToggleAction
 from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray
 from PyQt4.QtCore import QDataStream, QEvent, QIODevice, QMimeData
-from PyQt4.QtCore import QModelIndex, QObject, QSize, Qt, QTimer
-from PyQt4.QtGui import QFont, QIcon, QKeySequence, QLabel, QSlider, QSplitter
+from PyQt4.QtCore import QModelIndex, QObject, QRegExp, QSize, Qt, QTimer
+from PyQt4.QtGui import QFont, QFormLayout, QIcon, QKeySequence, QLabel, QSlider, QRegExpValidator, QSplitter
 from PyQt4.QtGui import QToolTip, QTreeView, QVBoxLayout, QWidget
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
@@ -243,6 +243,9 @@ class UI(KMainWindow):
         playlist_view.setDragEnabled(True)
 
         save_playlist.triggered.connect(controller.save_playlist)
+        
+        playlist_saver = PlaylistSaver(client, self)
+        save_playlist.triggered.connect(playlist_saver.show)
 
     def __set_time(self, elapsed, total):
         if self.__state != 'STOP':
@@ -368,6 +371,50 @@ class UIController(QObject):
 
     def save_playlist(self):
         self.__client.save()
+
+
+class PlaylistSaver(KDialog):
+
+    def __init__(self, client, parent=None):
+        super(PlaylistSaver, self).__init__(parent)
+        self.__client = client
+
+        self.setCaption("Save Playlist")
+
+        self.setButtons(self.ButtonCode(self.Ok | self.Cancel))
+        body = QWidget(self)
+        layout = QFormLayout(body)
+        self.__name = PlaylistSaver.createLineEdit(self)
+        layout.addRow(self.tr("&Name"), self.__name)
+        self.setMainWidget(body)
+        self.okClicked.connect(self.accept)
+
+    def accept(self):
+        try:
+            name = self.__name.text().strip()
+            if PlaylistSaver.isOkay(name.encode("utf-8"), self):
+                self.__client.save(name.encode('utf-8'))
+                self.accept()
+            else:
+                self.reject()
+        except (MPDError, socket.error) as e:
+            print str(e)
+
+    @classmethod
+    def createLineEdit(cls, parent, inDelegate = False):
+        # Again, also called by the Playlists Delegate.
+        # The inView parameter is there because the PlaylistsDelegate
+        # needs a KLineEdit created differently.
+
+        if inDelegate:
+            lineEdit = KLineEdit("", parent)
+        else:
+            lineEdit = KLineEdit()
+        rx = QRegExp("^[^\/]+$")
+        lineEdit.setValidator(QRegExpValidator(rx, parent))
+        # Plus dot, plus extension, makes 255.
+        lineEdit.setMaxLength(251)
+        return lineEdit
 
 
 class ItemView(QTreeView):
