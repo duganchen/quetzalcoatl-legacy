@@ -1589,9 +1589,10 @@ class Poller(QObject):
     
     def start(self):
         """
-        Sends the initial idle command.
+        Sends the initial poll commands.
         """
         self.__client.send_idle('stored_playlist', 'update')
+        self.__client.send_status()
 
     def poll(self):
 
@@ -1617,6 +1618,7 @@ class Poller(QObject):
                 if 'stored_playlist' in updates:
                     self.stored_playlist_updated.emit()
                 self.start()
+
         except (MPDError, socket.error) as e:
             print str(e)
 
@@ -1699,7 +1701,9 @@ class Client(QObject):
         self.__options = options
         self.__poller = None
         self.__idler = None
+        self.__commander = None
         self.__wrapped_poller = None
+        self.__wrapped_commander = None
 
     def open(self):
 
@@ -1712,6 +1716,12 @@ class Client(QObject):
                 self.__idler = MPDClient()
                 self.__idler.connect(self.__options['host'],
                         self.__options['port'])
+                
+                self.__commander = MPDClient()
+                self.__commander.connect(self.__options['host'],
+                                         self.__options['port'])
+                self.__wrapped_commander = SanitizedClient(self.__commander)
+                
                 self.is_connected_changed.emit(True)
             except (MPDError, socket.error) as e:
                 self.__poller = None
@@ -1734,6 +1744,13 @@ class Client(QObject):
                 self.__idler.disconnect()
             except:
                 pass
+            
+            try:
+                self.__commander.disconnect()
+            except:
+                pass
+            
+            self.__commander = None
 
             self.is_connected_changed.emit(False)
 
@@ -1750,8 +1767,10 @@ class Client(QObject):
         
         if attr in ['send_idle', 'fetch_idle']:
             attribute = getattr(self.__idler, attr)
-        else:
+        elif attr in ['send_status', 'fetch_status']:
             attribute = getattr(self.__wrapped_poller, attr)
+        else:
+            attribute = getattr(self.__wrapped_commander, attr)
         if hasattr(attribute, "__call__"):
             return lambda *args: self.__wrapper(attribute, *args)
         return attribute
@@ -1765,8 +1784,7 @@ class Client(QObject):
             # Then the signal is raised. In that order.
 
             self.is_connected_changed.emit(False)
-            self.__poller = None
-            self.__wrapped_poller = None
+            self.close()
             raise e
 
     def poll_id(self):
