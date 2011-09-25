@@ -216,14 +216,14 @@ class UI(KMainWindow):
 
         splitter.addWidget(playlist_view)
 
-#        database_model.server_updated.connect(poller.poll)
+        database_model.server_updated.connect(poller.poll)
         playlist_model = PlaylistModel(client, Item())
         playlist_view.doubleClicked.connect(playlist_model.handleDoubleClick)
         playlist_view.setModel(playlist_model)
         poller.playlist_changed.connect(playlist_model.set_playlist)
         poller.song_id_changed.connect(playlist_model.set_songid)
         poller.song_id_changed.connect(controller.set_songid)
-#        playlist_model.server_updated.connect(poller.poll)
+        playlist_model.server_updated.connect(poller.poll)
 
         self.__status_bar = self.statusBar()
         self.__combined_time = QLabel()
@@ -240,12 +240,12 @@ class UI(KMainWindow):
         poller.updated.connect(database_model.update)
         poller.stored_playlist_updated.connect(database_model.update_stored_playlist)
 
-        timer = QTimer(self)
-        timer.timeout.connect(poller.poll)
-        timer.setInterval(1000)
+#        timer = QTimer(self)
+#        timer.timeout.connect(poller.poll)
+#        timer.setInterval(1000)
         poller.start()
         poller.poll()
-        timer.start()
+#        timer.start()
         playlist_view.setDragEnabled(True)
 
         playlist_saver = PlaylistSaver(client, self)
@@ -366,7 +366,9 @@ class UIController(QObject):
 
     def skip_forward(self):
         self.__client.next()
+        print 'skipping forward'
         self.server_updated.emit()
+        print 'done'
 
     def set_state(self, state):
 
@@ -1603,12 +1605,15 @@ class Poller(QObject):
         """
 
         try:
+            print 'polling'
  
             poll_id = self.__client.poll_id()
             idle_id = self.__client.idle_id()
             readers = select([poll_id, idle_id], [], [])[0]
             if poll_id in readers:
                 status = self.__client.fetch_status()
+                print 'old_status = {0}'.format(self.__status)
+                print 'status = {0}'.format(status)
                 self.__handle_status(status)
                 self.__client.send_status()
             if idle_id in readers:
