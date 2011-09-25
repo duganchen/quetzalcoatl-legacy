@@ -240,12 +240,12 @@ class UI(KMainWindow):
         poller.updated.connect(database_model.update)
         poller.stored_playlist_updated.connect(database_model.update_stored_playlist)
 
-#        timer = QTimer(self)
-#        timer.timeout.connect(poller.poll)
-#        timer.setInterval(1000)
+        timer = QTimer(self)
+        timer.timeout.connect(poller.poll)
+        timer.setInterval(1000)
         poller.start()
         poller.poll()
-#        timer.start()
+        timer.start()
         playlist_view.setDragEnabled(True)
 
         playlist_saver = PlaylistSaver(client, self)
@@ -1594,7 +1594,6 @@ class Poller(QObject):
         Sends the initial poll commands.
         """
         self.__client.send_idle('stored_playlist', 'update')
-        self.__client.send_status()
 
     def poll(self):
 
@@ -1605,17 +1604,15 @@ class Poller(QObject):
         """
 
         try:
-            print 'polling'
- 
             poll_id = self.__client.poll_id()
             idle_id = self.__client.idle_id()
+            self.__client.send_status()
             readers = select([poll_id, idle_id], [], [])[0]
-            if poll_id in readers:
-                status = self.__client.fetch_status()
-                print 'old_status = {0}'.format(self.__status)
-                print 'status = {0}'.format(status)
-                self.__handle_status(status)
-                self.__client.send_status()
+            
+            # poll_id will always be there, of course.
+            status = self.__client.fetch_status()
+            self.__handle_status(status)
+
             if idle_id in readers:
                 updates = self.__client.fetch_idle()
                 if 'update' in updates:
@@ -1706,7 +1703,6 @@ class Client(QObject):
         self.__idler = None
         self.__commander = None
         self.__wrapped_poller = None
-        self.__wrapped_commander = None
 
     def open(self):
 
@@ -1719,11 +1715,6 @@ class Client(QObject):
                 self.__idler = MPDClient()
                 self.__idler.connect(self.__options['host'],
                         self.__options['port'])
-                
-                self.__commander = MPDClient()
-                self.__commander.connect(self.__options['host'],
-                                         self.__options['port'])
-                self.__wrapped_commander = SanitizedClient(self.__commander)
                 
                 self.is_connected_changed.emit(True)
             except (MPDError, socket.error) as e:
@@ -1747,13 +1738,6 @@ class Client(QObject):
                 self.__idler.disconnect()
             except:
                 pass
-            
-            try:
-                self.__commander.disconnect()
-            except:
-                pass
-            
-            self.__commander = None
 
             self.is_connected_changed.emit(False)
 
@@ -1770,10 +1754,8 @@ class Client(QObject):
         
         if attr in ['send_idle', 'fetch_idle']:
             attribute = getattr(self.__idler, attr)
-        elif attr in ['send_status', 'fetch_status']:
-            attribute = getattr(self.__wrapped_poller, attr)
         else:
-            attribute = getattr(self.__wrapped_commander, attr)
+            attribute = getattr(self.__wrapped_poller, attr)
         if hasattr(attribute, "__call__"):
             return lambda *args: self.__wrapper(attribute, *args)
         return attribute
