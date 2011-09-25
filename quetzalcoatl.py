@@ -216,14 +216,14 @@ class UI(KMainWindow):
 
         splitter.addWidget(playlist_view)
 
-        database_model.server_updated.connect(poller.poll)
+#        database_model.server_updated.connect(poller.poll)
         playlist_model = PlaylistModel(client, Item())
         playlist_view.doubleClicked.connect(playlist_model.handleDoubleClick)
         playlist_view.setModel(playlist_model)
         poller.playlist_changed.connect(playlist_model.set_playlist)
         poller.song_id_changed.connect(playlist_model.set_songid)
         poller.song_id_changed.connect(controller.set_songid)
-        playlist_model.server_updated.connect(poller.poll)
+#        playlist_model.server_updated.connect(poller.poll)
 
         self.__status_bar = self.statusBar()
         self.__combined_time = QLabel()
@@ -1604,21 +1604,20 @@ class Poller(QObject):
 
         try:
  
-            self.__client.send_status()
             poll_id = self.__client.poll_id()
             idle_id = self.__client.idle_id()
             readers = select([poll_id, idle_id], [], [])[0]
             if poll_id in readers:
                 status = self.__client.fetch_status()
                 self.__handle_status(status)
+                self.__client.send_status()
             if idle_id in readers:
                 updates = self.__client.fetch_idle()
                 if 'update' in updates:
                     self.updated.emit()
                 if 'stored_playlist' in updates:
                     self.stored_playlist_updated.emit()
-                self.start()
-
+                self.__client.send_idle('update', 'stored_playlist')
         except (MPDError, socket.error) as e:
             print str(e)
 
@@ -1659,10 +1658,9 @@ class Poller(QObject):
         """
         Responds to the client changing connection state.
         """
-
-        if is_connected == True:
-            self.poll()
-        else:
+        
+        # Polling on connect is causing problems. We've taken it out.
+        if is_connected == False:
             self.__reset()
 
     def __is_changed(self, new_status, key):
