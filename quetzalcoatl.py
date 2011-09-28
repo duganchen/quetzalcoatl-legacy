@@ -1591,6 +1591,7 @@ class Poller(QObject):
         poll.register(poll_id, EPOLLIN)
         poll.register(idle_id, EPOLLIN)
         result = poll.poll()
+        poll.close()
 
         for fd, event in result:
             if fd == idle_id:
