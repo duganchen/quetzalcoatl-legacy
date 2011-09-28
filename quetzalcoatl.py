@@ -26,7 +26,7 @@ from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 from base64 import b64decode
 import socket
-from select import select
+from select import epoll, EPOLLIN
 
 # The root menu of my iPod video 5.5G is:
 # Playlists
@@ -236,9 +236,10 @@ class UI(KMainWindow):
         self.__elapsed = 0
         self.__total = 0
         self.__slider_is_held = False
-        
+
         poller.updated.connect(database_model.update)
-        poller.stored_playlist_updated.connect(database_model.update_stored_playlist)
+        poller.stored_playlist_updated.connect(
+                database_model.update_stored_playlist)
 
         timer = QTimer(self)
         timer.timeout.connect(poller.poll)
@@ -392,12 +393,9 @@ class PlaylistSaver(KDialog):
         self.setMainWidget(body)
 
     def accept(self):
-        try:
-            name = self.__name.text().strip()
-            if self.isOkay(name.encode("utf-8"), self):
-                self.__client.save(name.encode('utf-8'))
-        except (MPDError, socket.error) as e:
-            print str(e)
+        name = self.__name.text().strip()
+        if self.isOkay(name.encode("utf-8"), self):
+            self.__client.save(name.encode('utf-8'))
 
     def isOkay(self, name, parent):
 
@@ -598,12 +596,7 @@ class ItemModel(QAbstractItemModel):
     def fetchMore(self, parent_index):
 
         parent = self.itemFromIndex(parent_index)
-
-        try:
-            rows = parent.fetch_more(self.__client)
-        except (MPDError, socket.error) as e:
-            print str(e)
-            return
+        rows = parent.fetch_more(self.__client)
 
         if len(rows) == 0:
             return
@@ -692,13 +685,13 @@ class DatabaseModel(ItemModel):
         mime_data.setData(self.mimeTypes()[0], encoded_data)
 
         return mime_data
-    
+
     def update(self):
         """
         Handles the "server updated" signal"
         """
         print 'Server Updated'
-    
+
     def update_stored_playlist(self):
         print 'Stored playlist updated'
 
@@ -1084,10 +1077,7 @@ class RandomSong(Song):
         Reimplementation
         """
 
-        try:
-            client.playid(client.addid(self['file']))
-        except (MPDError, socket.error) as e:
-            print str(e)
+        client.playid(client.addid(self['file']))
 
         return True
 
@@ -1110,25 +1100,14 @@ class AlbumSong(Song):
         The callback gets called on completion.
         """
 
-        try:
-            client.clear()
-        except (MPDError, socket.error) as e:
-            print str(e)
-            return False
+        client.clear()
 
         for uri in (song['file'] for song in self.parent.children):
-            try:
-                songid = client.addid(uri)
-            except (MPDError, socket.error) as e:
-                print str(e)
-                return False
+            songid = client.addid(uri)
 
             if uri == self['file']:
-                try:
-                    client.playid(songid)
-                except (MPDError, socket.error) as e:
-                    print str(e)
-                    return False
+                client.playid(songid)
+
         return True
 
 
@@ -1588,7 +1567,7 @@ class Poller(QObject):
 
         self.__status = {}
         self.__set_is_connected(False)
-    
+
     def start(self):
         """
         Sends the initial poll commands.
@@ -1603,25 +1582,29 @@ class Poller(QObject):
         Connects and disconnects if necessary.
         """
 
-        try:
-            poll_id = self.__client.poll_id()
-            idle_id = self.__client.idle_id()
-            self.__client.send_status()
-            readers = select([poll_id, idle_id], [], [])[0]
-            
-            # poll_id will always be there, of course.
-            status = self.__client.fetch_status()
-            self.__handle_status(status)
+        poll_id = self.__client.poll_id()
+        idle_id = self.__client.idle_id()
+        self.__client.send_status()
 
-            if idle_id in readers:
+        # Check for idle results
+        poll = epoll()
+        poll.register(poll_id, EPOLLIN)
+        poll.register(idle_id, EPOLLIN)
+        result = poll.poll()
+
+        for fd, event in result:
+            if fd == idle_id:
                 updates = self.__client.fetch_idle()
                 if 'update' in updates:
                     self.updated.emit()
                 if 'stored_playlist' in updates:
                     self.stored_playlist_updated.emit()
                 self.__client.send_idle('update', 'stored_playlist')
-        except (MPDError, socket.error) as e:
-            print str(e)
+
+        # The results of the status command will always be there,
+        # of course.
+        status = self.__client.fetch_status()
+        self.__handle_status(status)
 
     def __handle_status(self, status):
         if self.__is_changed(status, 'repeat'):
@@ -1660,7 +1643,7 @@ class Poller(QObject):
         """
         Responds to the client changing connection state.
         """
-        
+
         # Polling on connect is causing problems. We've taken it out.
         if is_connected == False:
             self.__reset()
@@ -1715,7 +1698,7 @@ class Client(QObject):
                 self.__idler = MPDClient()
                 self.__idler.connect(self.__options['host'],
                         self.__options['port'])
-                
+
                 self.is_connected_changed.emit(True)
             except (MPDError, socket.error) as e:
                 self.__poller = None
@@ -1751,7 +1734,7 @@ class Client(QObject):
         if self.__poller is None:
             self.open()
             # Any exceptions raised here will have propagated.
-        
+
         if attr in ['send_idle', 'fetch_idle']:
             attribute = getattr(self.__idler, attr)
         else:
@@ -1777,6 +1760,7 @@ class Client(QObject):
 
     def idle_id(self):
         return self.__idler.fileno()
+
 
 class SanitizedClient(object):
 
