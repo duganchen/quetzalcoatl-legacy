@@ -454,7 +454,7 @@ class ItemView(QTreeView):
                             value = song[tag]
                             if tag != 'track' and tag != 'disc':
                                 value = value.decode('utf-8')
-                            tag_values.append('{0}: {1}'.format(tag, value))
+                            tag_values.append(u'{0}: {1}'.format(tag, value))
                 if len(tag_values) > 0:
                     QToolTip.showText(event.globalPos(), '\n'.join(tag_values))
                     return True
