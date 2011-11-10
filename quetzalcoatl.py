@@ -535,7 +535,7 @@ class ItemModel(QAbstractItemModel):
         if role == Qt.DecorationRole and index.column() == 0:
             return item.icon
         if role == Qt.DisplayRole:
-            return item.data(index)
+            return item.data(index).decode('utf-8')
         return None
 
     def flags(self, index):
@@ -1058,7 +1058,7 @@ class Song(Item):
 
     def set_raw_data(self, song):
         self.__song = song
-        self.__label = self.title(song).decode('utf-8')
+        self.__label = self.title(song)
 
         # Internet streams (which may be added by other clients, of course...)
         # don't have times.
