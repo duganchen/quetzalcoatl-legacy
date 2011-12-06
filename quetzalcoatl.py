@@ -19,14 +19,40 @@ from PyKDE4.kdeui import KMessageBox, KToggleAction
 from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray
 from PyQt4.QtCore import QDataStream, QEvent, QIODevice, QMimeData
 from PyQt4.QtCore import QModelIndex, QObject, QRegExp, QSize, Qt, QTimer
+from PyQt4.QtCore import QUrl
 from PyQt4.QtGui import QFont, QFormLayout, QIcon, QKeySequence, QLabel
 from PyQt4.QtGui import QSlider, QRegExpValidator, QSplitter
 from PyQt4.QtGui import QToolTip, QTreeView, QVBoxLayout, QWidget
+from PyQt4.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 from base64 import b64decode
 import socket
 from select import epoll, EPOLLIN
+from os import error, makedirs
+from os.path import join
+
+# To add some data structures:
+
+# Persistent:
+# {
+#   MUSICBRAINZ_ALBUMID:
+#   {
+#       'small':
+#       {
+#           'path': '',
+#           'pixmap': ''
+#       },
+#       'mega':
+#       {
+#           'path': '',
+#           'pixmap': ''
+#       },
+#   '}
+#}
+
+# Temporary:
+# {url: MUSICBRAINZ_ALBUMID}
 
 # The root menu of my iPod video 5.5G is:
 # Playlists
@@ -74,10 +100,6 @@ from select import epoll, EPOLLIN
 # 'musicbrainz_trackid': '9da425aa-3c0b-4d08-9ae3-afa56f864022',
 # 'date': '2005-08-30'}]
 
-# Last.fm API key. Please don't steal this key
-# (If you're forking it, please get your own).
-LAST_FM_KEY = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
-API_ROOT = 'http://ws.audioscrobbler.com/2.0/'
 
 
 def main():
@@ -251,6 +273,10 @@ class UI(KMainWindow):
 
         playlist_saver = PlaylistSaver(client, self)
         save_playlist.triggered.connect(playlist_saver.show)
+
+        icon_manager = IconManager(self)
+        icon_manager.fetch(client)
+
 
     def __set_time(self, elapsed, total):
         if self.__state != 'STOP':
@@ -1945,5 +1971,73 @@ class Options(object):
         self.__data[key] = value
 
 
+class IconManager(QObject):
+
+    # Last.fm API key. Please don't steal this key
+    # (If you're forking it, please get your own).
+    LAST_FM_KEY = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
+
+    self.urls = {}
+
+    def __init__(self, parent):
+
+        super(IconManager, self).__init__(parent)
+        self.manager = QNetworkAccessManager(self)
+
+    def fetch(self, client):
+        for mbid in set(x['musicbrainz_albumid'] for x in client.listallinfo()
+                if 'musicbrainz_albumid' in x):
+            request = QNetworkRequest()
+            request.setUrl(QUrl(self.album_info_url(mbid)))
+            request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
+            reply = self.manager.get(request)
+            reply.finished.connect(self.info_downloaded)
+    
+    @classmethod
+    def album_info_url(mbid):
+        scheme = 'http'
+        netloc = 'ws.audioscrobbler.com'
+        path = '/2.0/'
+        query = urlencode({'mbid': mbid, 'api_key': LAST_FM_KEY,
+            'method': 'album.getinfo', 'format': 'json'})
+        fragment = ''
+        parts = (scheme, netloc, path, query, fragment)
+        return urlunsplit(parts)
+
+    def info_downloaded(self):
+        reply = self.sender()
+        raw = reply.readAll()
+        json = loads(raw.data())
+        mega_url = [x['#text'] for x in json['album']['image']
+                if x['size'] == 'mega'][0]
+        mega_request = QNetworkRequest()
+        mega_request.setUrl(QUrl(mega_url))
+        mega_request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
+        self.urls[mega_url] = mbid
+        mega_reply = self.manager.get(mega_request)
+        mega_reply.finished.connect(self.mega_downloaded)
+
+        small_url = [x['#text'] for x in json['album']['image']
+                if x['size'] == 'mega'][0]
+        small_request = QNetworkRequest()
+        small_request.setUrl(QUrl(small_url))
+        small_request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
+        self.urls[small_url] = mbid
+        small_reply = self.manager.get(small_request)
+        small_reply.finished.connect(self.small_downloaded)
+
+    def small_downloaded(self):
+        try:
+            makedirs(
+        except error:
+            pass
+
+    def mega_downloaded(self):
+        pass
+
+
 if __name__ == "__main__":
     main()
+
+
+
