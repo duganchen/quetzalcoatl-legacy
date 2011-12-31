@@ -31,6 +31,8 @@ import socket
 from select import epoll, EPOLLIN
 from os import error, makedirs
 from os.path import join
+from xdg import BaseDirectory
+from urlparse import urlparse, parse_qs
 
 # To add some data structures:
 
@@ -275,7 +277,7 @@ class UI(KMainWindow):
         save_playlist.triggered.connect(playlist_saver.show)
 
         icon_manager = IconManager(self)
-        icon_manager.fetch(client)
+        #icon_manager.fetch(client)
 
 
     def __set_time(self, elapsed, total):
@@ -1188,8 +1190,15 @@ class AllSongs(ExpandableItem):
     def __init__(self):
         super(AllSongs, self).__init__('Songs', 'server-database')
 
+        self.icon_manager = IconManager()
+
     def fetch_more(self, client):
         songs = (x for x in client.listallinfo() if 'file' in x)
+
+        mbids = set(x['musicbrainz_albumid'] for x in songs if 'musicbrainz_albumid' in x)
+
+        self.icon_manager.fetch(client, mbids)
+
         return [RandomSong(x) for x in sorted(songs,
             key=self.alphabetical_order)]
 
@@ -1971,22 +1980,28 @@ class Options(object):
         self.__data[key] = value
 
 
+# This icon manager will be replaced.
+
 class IconManager(QObject):
 
     # Last.fm API key. Please don't steal this key
     # (If you're forking it, please get your own).
     LAST_FM_KEY = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
 
-    self.urls = {}
+    # icons['mbid']['small'] = KIcon()
+    # icons['mbid']['mega'] = KIcon()
+    icons = {}
 
-    def __init__(self, parent):
+    url_to_mbid = {}
+
+    def __init__(self, parent=None):
 
         super(IconManager, self).__init__(parent)
         self.manager = QNetworkAccessManager(self)
 
-    def fetch(self, client):
-        for mbid in set(x['musicbrainz_albumid'] for x in client.listallinfo()
-                if 'musicbrainz_albumid' in x):
+    def fetch(self, client, mbids):
+        for mbid in (x for x in mbids if x not in self.icons):
+            self.icons[mbid] = {}
             request = QNetworkRequest()
             request.setUrl(QUrl(self.album_info_url(mbid)))
             request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
@@ -1994,7 +2009,7 @@ class IconManager(QObject):
             reply.finished.connect(self.info_downloaded)
     
     @classmethod
-    def album_info_url(mbid):
+    def album_info_url(self, mbid):
         scheme = 'http'
         netloc = 'ws.audioscrobbler.com'
         path = '/2.0/'
@@ -2006,19 +2021,26 @@ class IconManager(QObject):
 
     def info_downloaded(self):
         reply = self.sender()
+
+        _, _, _, _, query, _ = urlparse(reply.url())
+        mbid = parse_qs(query)['mbid']
+
         raw = reply.readAll()
         json = loads(raw.data())
+
         mega_url = [x['#text'] for x in json['album']['image']
                 if x['size'] == 'mega'][0]
+        self.url_to_mbid[mega_url] = mbid
+
         mega_request = QNetworkRequest()
         mega_request.setUrl(QUrl(mega_url))
         mega_request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
-        self.urls[mega_url] = mbid
         mega_reply = self.manager.get(mega_request)
         mega_reply.finished.connect(self.mega_downloaded)
 
         small_url = [x['#text'] for x in json['album']['image']
                 if x['size'] == 'mega'][0]
+        self._url_to_mbid[small_url] = mbid
         small_request = QNetworkRequest()
         small_request.setUrl(QUrl(small_url))
         small_request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
@@ -2026,18 +2048,236 @@ class IconManager(QObject):
         small_reply = self.manager.get(small_request)
         small_reply.finished.connect(self.small_downloaded)
 
+        reply.deleteLater()
+
     def small_downloaded(self):
-        try:
-            makedirs(
-        except error:
-            pass
+        reply = self.sender()
+
+        print image_root(reply)
+
+        reply.deleteLater()
 
     def mega_downloaded(self):
-        pass
+        reply = self.sender()
 
+        print image_root(reply)
+
+        reply.deleteLater()
+
+    def image_root(reply):
+        print 'url={0}'.format(reply.url())
+        print 'path={0}'.format(reply.url().path())
 
 if __name__ == "__main__":
     main()
 
+# Icon manager begins ere. Integrate it.
 
 
+from sip import setapi
+setapi("QDate", 2)
+setapi("QDateTime", 2)
+setapi("QTextStream", 2)
+setapi("QTime", 2)
+setapi("QVariant", 2)
+setapi("QString", 2)
+setapi("QUrl", 2)
+
+from PyQt4.QtCore import QObject, QUrl, pyqtSignal
+from PyQt4.QtGui import QApplication, QIcon, QMainWindow, QPixmap
+from PyQt4.QtNetwork import QNetworkAccessManager, QNetworkRequest
+from PyKDE4.kdeui import KIcon
+from base64 import b64decode
+from os import makedirs, path
+from sys import argv
+from urllib import urlencode
+from urlparse import parse_qs, urlparse, urlunsplit
+from xdg import BaseDirectory
+import cPickle, json
+
+class MainWindow(QMainWindow):
+    def __init__(self, parent=None):
+        super(MainWindow, self).__init__(parent)
+        icon_manager = IconManager(self)
+        icon_manager.get_album_art('4321855e-8e8e-4786-8506-28e6d69633b9')
+
+
+class IconManager(QObject):
+
+    """
+    Manages icons. Including pulling them from last.fm
+    """
+
+    # TODO: Change serialize/deserialize/initialize to something that works
+    # better
+    # Have get_album_art abort if an attempt has already been made
+
+    icon_loaded = pyqtSignal(str)
+    art_loaded = pyqtSignal(str)
+
+    __last_fm_key = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
+
+    __stock_icons = {}
+    __stock_icons['ac3'] = QIcon(KIcon('audio-ac3'))
+    __stock_icons['mid'] = QIcon(KIcon('audio-midi'))
+    __stock_icons['sid'] = QIcon(KIcon('audio-prs.sid'))
+    __stock_icons['ra'] = QIcon(KIcon('audio-vn.rn-realmedia'))
+    __stock_icons['aiff'] = QIcon(KIcon('audio-x-aiff'))
+    __stock_icons['flac'] = QIcon(KIcon('audio-x-flac'))
+    __stock_icons['ogg'] = QIcon(KIcon('audio-x-flac+ogg'))
+    __stock_icons['ape'] = QIcon(KIcon('audio-x-monkey'))
+    __stock_icons['spx'] = QIcon(KIcon('audio-x-speex+ogg'))
+    __stock_icons['wav'] = QIcon(KIcon('audio-x-wav'))
+
+    def __init__(self, parent=None):
+        super(IconManager, self).__init__(parent)
+        self.__network_access_manager = QNetworkAccessManager(self)
+        self.__url_mbid = {}
+        self.__icon_mbid_filepath = {}
+        self.__art_mbid_filepath = {}
+        self.__mbid_icon = {}
+        self.__mbid_art = {}
+
+        self.__icon_mbid_filepath = {}
+        with open(self.__path('mbid_filename'), 'rb') as f:
+            self.__icon_mbid_filepath = cPickle.load(f)
+
+        for mbid, filepath in self.__icon_mbid_filepath:
+            # Error handling might be nice here...
+            self.__mbid_icon[mbid] = QIcon(filepath)
+
+    def icon(self, song):
+        """
+        Returns a QIcon showing the album art for the given song. If the icon
+        fetched from last.fm, the request is initiated and a icon_loaded
+        signal is emitted on success.
+        """
+
+        # mbids we have attempted to fetch. Each mbid only gets fetched once.
+        self.__mbids = set()
+
+        if 'musicbrainz_albumid' in song:
+            mbid = song['musicbrainz_albumid']
+
+            if mbid in self.__mbid_icon:
+                return self.__mbid_icon[mbid]
+
+            self.__get_album_art(mbid)
+
+        return self.__icon_by_filename(song)
+
+    def close(self):
+        """
+        Serializes data for when the program is closed.
+        """
+        with open(self.__path('mbid_filename'), 'wb') as f:
+            cPickle.dump(self.__icon_mbid_filepath, f,
+                    cPickle.HIGHEST_PROTOCOL)
+
+    def initialize(self):
+        for mbid, filepath in self.__icon_mbid_filepath:
+            # Error handling might be nice here...
+            self.__mbid_icon[mbid] = QIcon(filepath)
+
+    @classmethod
+    def __icon_by_filename(self, song):
+
+        _, ext = path.splitext(song['file'])
+
+        if ext in self.__stock_icons:
+            return self.__stock_icons[ext]
+        return QIcon(KIcon('audio-x-generic'))
+
+    def __get_album_art(self, mbid):
+        if mbid in self.__mbids:
+            return
+
+        self.__mbids.add(mbid)
+        request = QNetworkRequest()
+        request.setUrl(QUrl(self.__album_info_url(mbid)))
+        request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
+        reply = self.__network_access_manager.get(request)
+        reply.finished.connect(self.__album_info_downloaded)
+
+    def __album_info_downloaded(self):
+        info_reply = self.sender()
+        print info_reply.url()
+        query = urlparse(info_reply.url().toString()).query
+        mbid = parse_qs(query)['mbid']
+
+        data = json.loads(info_reply.readAll().data())
+
+        mega_url = [x['#text'] for x in data['album']['image']
+                if x['size'] == 'mega'][0]
+        self.__url_mbid[mega_url] = mbid
+
+        mega_request = QNetworkRequest()
+        mega_request.setUrl(QUrl(mega_url))
+        mega_reply = self.__network_access_manager.get(mega_request)
+        mega_reply.finished.connect(self.__art_downloaded)
+
+        small_url = [x['#text'] for x in data['album']['image']
+                if x['size'] == 'small'][0]
+        self.__url_mbid[small_url] = mbid
+
+        small_request = QNetworkRequest()
+        small_request.setUrl(QUrl(small_url))
+        small_reply = self.__network_access_manager.get(small_request)
+        small_reply.finished.connect(self.__icon_downloaded)
+
+        info_reply.deleteLater()
+
+    def __icon_downloaded(self):
+        reply = self.sender()
+        mbid = self.__url_mbid[reply.url().toString()]
+        filepath = self.__image_downloaded(reply)
+        self.__icon_mbid_filepath[mbid] = filepath
+        self.__small_mbid_icon[mbid] = QIcon(filepath)
+        self.icon_loaded.emit(mbid)
+        reply.deleteLater()
+
+    def __art_downloaded(self):
+        reply = self.sender()
+        mbid = self.__url_mbid[reply.url().toString()]
+        filepath = self.__image_downloaded(reply)
+        self.__art_mbid_filepath[mbid] = filepath
+        self.__mega_mbid_icon[mbid] = QPixmap(filepath)
+        self.art_loaded.emit(mbid)
+        reply.deleteLater()
+
+    def __image_downloaded(self, reply):
+        image_path = path.join(BaseDirectory.xdg_cache_home, 'quetzalcoatl',
+                *urlparse(reply.url().toString()).path.split('/')[2:])
+        if not path.exists(path.dirname(image_path)):
+            makedirs(path.dirname(image_path))
+        image = open(image_path, 'wb')
+        image.write(reply.readAll())
+        image.close()
+        return image_path
+
+    @classmethod
+    def __path(cls, filename):
+        root_path = path.join(BaseDirectory.xdg_cache_home, 'quetzalcoatl')
+        if not path.exists(root_path):
+            makedirs(root_path)
+        return path.join(root_path, filename)
+
+    @classmethod
+    def __album_info_url(cls, mbid):
+        scheme = 'http'
+        netloc = 'ws.audioscrobbler.com'
+        path = '/2.0/'
+        query = urlencode({'mbid': mbid, 'api_key': cls.__last_fm_key,
+            'method': 'album.getinfo', 'format': 'json'})
+        fragment = ''
+        parts = (scheme, netloc, path, query, fragment)
+        return urlunsplit(parts)
+
+def main():
+    app = QApplication(argv)
+    main = MainWindow()
+    main.show()
+    exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
