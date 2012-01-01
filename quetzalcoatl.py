@@ -152,9 +152,11 @@ class UI(KMainWindow):
         self.__slider.sliderReleased.connect(self.__release_slider)
         layout.addWidget(splitter)
 
+        icon_manager = IconManager(self)
+
         database_view = DatabaseView()
         splitter.addWidget(database_view)
-        database_model = DatabaseModel(client)
+        database_model = DatabaseModel(client, icon_manager)
         database_model.append_row(Playlists())
         database_model.append_row(Artists())
         database_model.append_row(Albums())
@@ -208,10 +210,6 @@ class UI(KMainWindow):
 
         playlist_saver = PlaylistSaver(client, self)
         save_playlist.triggered.connect(playlist_saver.show)
-
-        icon_manager = IconManager(self)
-        #icon_manager.fetch(client)
-
 
     def __set_time(self, elapsed, total):
         if self.__state != 'STOP':
@@ -484,16 +482,19 @@ class ItemModel(QAbstractItemModel):
 
     server_updated = pyqtSignal()
 
-    def __init__(self, client, root, parent=None):
+    def __init__(self, client, root, icon_manager, parent=None):
         super(ItemModel, self).__init__(parent)
         self.__root = root
         self.__root.has_children = True
         self.__headers = ['0', '1']
         self.__client = client
+        self.__icon_manager = icon_manager
 
     def data(self, index, role=Qt.DisplayRole):
         item = self.itemFromIndex(index)
         if role == Qt.DecorationRole and index.column() == 0:
+            if item.is_song:
+                return self.__icon_manager.icon(item.song)
             return item.icon
         if role == Qt.DisplayRole:
             return item.data(index).decode('utf-8')
@@ -626,10 +627,10 @@ class ItemModel(QAbstractItemModel):
 
 
 class DatabaseModel(ItemModel):
-    def __init__(self, client, parent=None):
+    def __init__(self, client, icon_manager, parent=None):
         root = Item()
         root.has_children = True
-        super(DatabaseModel, self).__init__(client, root, parent)
+        super(DatabaseModel, self).__init__(client, root, icon_manager, parent)
 
     def columnCount(self, parent_index=QModelIndex()):
         return 1
@@ -809,12 +810,6 @@ class Item(object):
     icons['drive-harddisk'] = QIcon(KIcon('drive-harddisk'))
     icons['folder-sound'] = QIcon(KIcon('folder-sound'))
     icons['media-optical-audio'] = QIcon(KIcon('media-optical-audio'))
-    icons['.ac3'] = QIcon(KIcon('audio-x-ac3'))
-    icons['.flac'] = QIcon(KIcon('audio-x-flac'))
-    icons['.ogg'] = QIcon(KIcon('audio-x-flac+ogg'))
-    icons['.ra'] = QIcon(KIcon('audio-ac3'))
-    icons['.mid'] = QIcon(KIcon('audio-midi'))
-    icons['.wav'] = QIcon(KIcon('audio-x-wav'))
 
     def __init__(self, parent=None):
         """
@@ -1025,6 +1020,14 @@ class Song(Item):
         # don't have times.
         self.__time = self.time_str(song['time']) if 'time' in song else None
 
+    @property
+    def is_song(self):
+        return True
+    
+    @property
+    def song(self):
+        return self.__song
+
 
 class RandomSong(Song):
     """
@@ -1114,6 +1117,10 @@ class ExpandableItem(Item):
         return [AlbumSong(song) for song in sorted(sorted(songs, key=track),
             key=disc)]
 
+    @property
+    def is_song(self):
+        return False
+
 
 class AllSongs(ExpandableItem):
     """
@@ -1127,10 +1134,6 @@ class AllSongs(ExpandableItem):
 
     def fetch_more(self, client):
         songs = (x for x in client.listallinfo() if 'file' in x)
-
-        mbids = set(x['musicbrainz_albumid'] for x in songs if 'musicbrainz_albumid' in x)
-
-        self.icon_manager.fetch(client, mbids)
 
         return [RandomSong(x) for x in sorted(songs,
             key=self.alphabetical_order)]
@@ -1946,6 +1949,7 @@ class IconManager(QObject):
         self.__art_mbid_filepath = {}
         self.__mbid_icon = {}
         self.__mbid_art = {}
+        self.__mbids = set()
 
         try:
             with open(self.__path('mbid_filename'), 'rb') as f:
@@ -1963,9 +1967,6 @@ class IconManager(QObject):
         fetched from last.fm, the request is initiated and a icon_loaded
         signal is emitted on success.
         """
-
-        # mbids we have attempted to fetch. Each mbid only gets fetched once.
-        self.__mbids = set()
 
         if 'musicbrainz_albumid' in song:
             mbid = song['musicbrainz_albumid']
@@ -2003,6 +2004,10 @@ class IconManager(QObject):
         if mbid in self.__mbids:
             return
 
+        print 'fetching {0}'.format(mbid)
+
+        print self.__mbids
+
         self.__mbids.add(mbid)
         request = QNetworkRequest()
         request.setUrl(QUrl(self.__album_info_url(mbid)))
@@ -2012,11 +2017,13 @@ class IconManager(QObject):
 
     def __album_info_downloaded(self):
         info_reply = self.sender()
-        print info_reply.url()
         query = urlparse(info_reply.url().toString()).query
         mbid = parse_qs(query)['mbid']
 
         data = json.loads(info_reply.readAll().data())
+
+        if 'error' in data:
+            return
 
         mega_url = [x['#text'] for x in data['album']['image']
                 if x['size'] == 'mega'][0]
