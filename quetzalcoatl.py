@@ -2018,7 +2018,7 @@ class IconManager(QObject):
     def __album_info_downloaded(self):
         info_reply = self.sender()
         query = urlparse(info_reply.url().toString()).query
-        mbid = parse_qs(query)['mbid']
+        mbid = parse_qs(query)['mbid'][0]
 
         data = json.loads(info_reply.readAll().data())
 
@@ -2058,7 +2058,6 @@ class IconManager(QObject):
         reply = self.sender()
         mbid = self.__url_mbid[reply.url().toString()]
         filepath = self.__image_downloaded(reply)
-        print 'art_downloaded. filepath={0}'.format(filepath)
         self.__art_mbid_filepath[mbid] = filepath
         self.__mega_mbid_icon[mbid] = QPixmap(filepath)
         self.art_loaded.emit(mbid)
