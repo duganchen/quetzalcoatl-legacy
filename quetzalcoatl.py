@@ -2004,10 +2004,6 @@ class IconManager(QObject):
         if mbid in self.__mbids:
             return
 
-        print 'fetching {0}'.format(mbid)
-
-        print self.__mbids
-
         self.__mbids.add(mbid)
         request = QNetworkRequest()
         request.setUrl(QUrl(self.__album_info_url(mbid)))
