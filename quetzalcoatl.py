@@ -629,7 +629,7 @@ class ItemModel(QAbstractItemModel):
     def __refresh_icon(self, child, mbid):
         if child.is_song:
             if 'musicbrainz_albumid' in child.song:
-                index = self.createIndex(child.row(), 0, child) 
+                index = self.createIndex(child.row, 0, child) 
                 self.dataChanged.emit(index, index)
             return
 
