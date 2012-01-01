@@ -1,5 +1,8 @@
 #!/usr/bin/env python2
 
+# TODO: Persist icon downloads
+# Icons should use artist and album information
+
 from sip import setapi
 
 setapi("QDate", 2)
