@@ -10,98 +10,31 @@ setapi("QVariant", 2)
 setapi("QString", 2)
 setapi("QUrl", 2)
 
-from datetime import datetime
-from sys import argv, exit
 from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
 from PyKDE4.kdeui import KAction, KApplication, KDialog, KIcon, KLineEdit
 from PyKDE4.kdeui import KMainWindow
 from PyKDE4.kdeui import KMessageBox, KToggleAction
-from PyQt4.QtCore import pyqtSignal, QAbstractItemModel, QByteArray
+from PyQt4.QtCore import QAbstractItemModel, QByteArray
 from PyQt4.QtCore import QDataStream, QEvent, QIODevice, QMimeData
 from PyQt4.QtCore import QModelIndex, QObject, QRegExp, QSize, Qt, QTimer
-from PyQt4.QtCore import QUrl
+from PyQt4.QtCore import QUrl, pyqtSignal
 from PyQt4.QtGui import QFont, QFormLayout, QIcon, QKeySequence, QLabel
-from PyQt4.QtGui import QSlider, QRegExpValidator, QSplitter
+from PyQt4.QtGui import QSlider, QPixmap, QRegExpValidator, QSplitter
 from PyQt4.QtGui import QToolTip, QTreeView, QVBoxLayout, QWidget
 from PyQt4.QtNetwork import QNetworkAccessManager, QNetworkRequest
-from posixpath import basename, splitext
 from mpd import MPDClient, MPDError
 from base64 import b64decode
+import cPickle
+from datetime import datetime
+import json
+from os import makedirs, path
+import posixpath
+from select import EPOLLIN, epoll
 import socket
-from select import epoll, EPOLLIN
-from os import error, makedirs
-from os.path import join
+from urllib import urlencode
+from urlparse import parse_qs, urlparse, urlunsplit
+from sys import argv, exit
 from xdg import BaseDirectory
-from urlparse import urlparse, parse_qs
-
-# To add some data structures:
-
-# Persistent:
-# {
-#   MUSICBRAINZ_ALBUMID:
-#   {
-#       'small':
-#       {
-#           'path': '',
-#           'pixmap': ''
-#       },
-#       'mega':
-#       {
-#           'path': '',
-#           'pixmap': ''
-#       },
-#   '}
-#}
-
-# Temporary:
-# {url: MUSICBRAINZ_ALBUMID}
-
-# The root menu of my iPod video 5.5G is:
-# Playlists
-# Artists
-# Albums
-# Compilations
-# Songs
-# Podcasts
-# Genres
-# Composers
-# Audiobooks
-
-# The play/pause button on both of my multimedia keyboards is Qt.Key_MediaPlay,
-# not Qt.Key_MediaTogglePlayPause.
-
-# TO DO:
-
-# Okay, here's the current do-do list:
-
-# * playlists (saving, renaming, deleting)
-# * get the configuration dialog working again (authentication, volume, single,
-#   consume, etc)
-# * album art downloading
-# * refreshing the server
-# * scrobbling
-# * Streams and podcasts (in addition to the music library)
-# * After dropping songs onto the playlist, those songs need to be selected.
-
-# A sample song (in the playlist) with with MusicBrainz tags looks like the
-# following:
-
-# [{'album': 'Melissa',
-# 'musicbrainz_artistid': '9b137ab6-5987-4606-989b-183cdb2d3e50',
-# 'title': 'Black Funeral',
-# 'track': '5',
-# 'id': '0',
-# 'artist': 'Mercyful Fate',
-# 'pos': '0',
-# 'musicbrainz_albumid': '5ecfeef5-d6df-4d09-b508-b4b31fca739a',
-# 'last-modified': '2011-09-18T06:22:21Z',
-# 'file':
-# 'Mercyful Fate (1983) Melissa (2005 Remaster)/05 - Black Funeral.ogg',
-# 'time': '170',
-# 'genre': 'Heavy Metal',
-# 'musicbrainz_trackid': '9da425aa-3c0b-4d08-9ae3-afa56f864022',
-# 'date': '2005-08-30'}]
-
 
 
 def main():
@@ -1031,7 +964,7 @@ class Item(object):
     def title(cls, song):
         if 'title' in song:
             return song["title"]
-        return splitext(basename(song["file"]))[0]
+        return posixpath.splitext(posixpath.basename(song["file"]))[0]
 
     @classmethod
     def alphabetical_order(cls, song):
@@ -1552,7 +1485,7 @@ class Directory(ExpandableItem):
 
     def __init__(self, root, icon):
         super(Directory, self).__init__(root, icon)
-        self.__label = basename(root) if basename(root) == '' else root
+        self.__label = posixpath.basename(root) if posixpath.basename(root) == '' else root
         self.__root = root
 
     def fetch_more(self, client):
@@ -1883,7 +1816,7 @@ class SanitizedClient(object):
         # 'playlist' in status is an integer
         # in ls[all]info it's a filename
 
-        root, ext = splitext(value)
+        root, ext = posixpath.splitext(value)
         if len(ext.strip()) == 0:
             try:
                 return int(value)
@@ -1980,126 +1913,6 @@ class Options(object):
         self.__data[key] = value
 
 
-# This icon manager will be replaced.
-
-class IconManager(QObject):
-
-    # Last.fm API key. Please don't steal this key
-    # (If you're forking it, please get your own).
-    LAST_FM_KEY = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
-
-    # icons['mbid']['small'] = KIcon()
-    # icons['mbid']['mega'] = KIcon()
-    icons = {}
-
-    url_to_mbid = {}
-
-    def __init__(self, parent=None):
-
-        super(IconManager, self).__init__(parent)
-        self.manager = QNetworkAccessManager(self)
-
-    def fetch(self, client, mbids):
-        for mbid in (x for x in mbids if x not in self.icons):
-            self.icons[mbid] = {}
-            request = QNetworkRequest()
-            request.setUrl(QUrl(self.album_info_url(mbid)))
-            request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
-            reply = self.manager.get(request)
-            reply.finished.connect(self.info_downloaded)
-    
-    @classmethod
-    def album_info_url(self, mbid):
-        scheme = 'http'
-        netloc = 'ws.audioscrobbler.com'
-        path = '/2.0/'
-        query = urlencode({'mbid': mbid, 'api_key': LAST_FM_KEY,
-            'method': 'album.getinfo', 'format': 'json'})
-        fragment = ''
-        parts = (scheme, netloc, path, query, fragment)
-        return urlunsplit(parts)
-
-    def info_downloaded(self):
-        reply = self.sender()
-
-        _, _, _, _, query, _ = urlparse(reply.url())
-        mbid = parse_qs(query)['mbid']
-
-        raw = reply.readAll()
-        json = loads(raw.data())
-
-        mega_url = [x['#text'] for x in json['album']['image']
-                if x['size'] == 'mega'][0]
-        self.url_to_mbid[mega_url] = mbid
-
-        mega_request = QNetworkRequest()
-        mega_request.setUrl(QUrl(mega_url))
-        mega_request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
-        mega_reply = self.manager.get(mega_request)
-        mega_reply.finished.connect(self.mega_downloaded)
-
-        small_url = [x['#text'] for x in json['album']['image']
-                if x['size'] == 'mega'][0]
-        self._url_to_mbid[small_url] = mbid
-        small_request = QNetworkRequest()
-        small_request.setUrl(QUrl(small_url))
-        small_request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
-        self.urls[small_url] = mbid
-        small_reply = self.manager.get(small_request)
-        small_reply.finished.connect(self.small_downloaded)
-
-        reply.deleteLater()
-
-    def small_downloaded(self):
-        reply = self.sender()
-
-        print image_root(reply)
-
-        reply.deleteLater()
-
-    def mega_downloaded(self):
-        reply = self.sender()
-
-        print image_root(reply)
-
-        reply.deleteLater()
-
-    def image_root(reply):
-        print 'url={0}'.format(reply.url())
-        print 'path={0}'.format(reply.url().path())
-
-if __name__ == "__main__":
-    main()
-
-# Icon manager begins ere. Integrate it.
-
-
-from sip import setapi
-setapi("QDate", 2)
-setapi("QDateTime", 2)
-setapi("QTextStream", 2)
-setapi("QTime", 2)
-setapi("QVariant", 2)
-setapi("QString", 2)
-setapi("QUrl", 2)
-
-from PyQt4.QtCore import QObject, QUrl, pyqtSignal
-from PyQt4.QtGui import QApplication, QIcon, QMainWindow, QPixmap
-from PyQt4.QtNetwork import QNetworkAccessManager, QNetworkRequest
-from PyKDE4.kdeui import KIcon
-from base64 import b64decode
-from os import makedirs, path
-from sys import argv
-from urllib import urlencode
-from urlparse import parse_qs, urlparse, urlunsplit
-from xdg import BaseDirectory
-import cPickle, json
-
-class MainWindow(QMainWindow):
-    def __init__(self, parent=None):
-        super(MainWindow, self).__init__(parent)
-        icon_manager = IconManager(self)
-        icon_manager.get_album_art('4321855e-8e8e-4786-8506-28e6d69633b9')
 
 
 class IconManager(QObject):
@@ -2107,10 +1920,6 @@ class IconManager(QObject):
     """
     Manages icons. Including pulling them from last.fm
     """
-
-    # TODO: Change serialize/deserialize/initialize to something that works
-    # better
-    # Have get_album_art abort if an attempt has already been made
 
     icon_loaded = pyqtSignal(str)
     art_loaded = pyqtSignal(str)
@@ -2138,9 +1947,11 @@ class IconManager(QObject):
         self.__mbid_icon = {}
         self.__mbid_art = {}
 
-        self.__icon_mbid_filepath = {}
-        with open(self.__path('mbid_filename'), 'rb') as f:
-            self.__icon_mbid_filepath = cPickle.load(f)
+        try:
+            with open(self.__path('mbid_filename'), 'rb') as f:
+                self.__icon_mbid_filepath = cPickle.load(f)
+        except IOError:
+            self.__icon_mbid_filepath = {}
 
         for mbid, filepath in self.__icon_mbid_filepath:
             # Error handling might be nice here...
@@ -2273,11 +2084,6 @@ class IconManager(QObject):
         parts = (scheme, netloc, path, query, fragment)
         return urlunsplit(parts)
 
-def main():
-    app = QApplication(argv)
-    main = MainWindow()
-    main.show()
-    exit(app.exec_())
 
 if __name__ == "__main__":
     main()
