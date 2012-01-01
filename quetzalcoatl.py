@@ -176,7 +176,7 @@ class UI(KMainWindow):
         splitter.addWidget(playlist_view)
 
         database_model.server_updated.connect(poller.poll)
-        playlist_model = PlaylistModel(client, Item())
+        playlist_model = PlaylistModel(client, Item(), icon_manager)
         playlist_view.doubleClicked.connect(playlist_model.handleDoubleClick)
         playlist_view.setModel(playlist_model)
         poller.playlist_changed.connect(playlist_model.set_playlist)
@@ -489,6 +489,7 @@ class ItemModel(QAbstractItemModel):
         self.__headers = ['0', '1']
         self.__client = client
         self.__icon_manager = icon_manager
+        self.__icon_manager.icon_loaded.connect(self.__icon_loaded)
 
     def data(self, index, role=Qt.DisplayRole):
         item = self.itemFromIndex(index)
@@ -625,6 +626,19 @@ class ItemModel(QAbstractItemModel):
         """ Returns an iterator for the children. """
         return self.__root.children
 
+    def __refresh_icon(self, child, mbid):
+        if child.is_song:
+            if 'musicbrainz_albumid' in child.song:
+                index = self.createIndex(child.row(), 0, child) 
+                self.dataChanged.emit(index, index)
+            return
+
+        for grandchild in child.children:
+            self.__refresh_icon(grandchild, mbid)
+
+    def __icon_loaded(self, mbid):
+        self.__refresh_icon(self.__root, mbid)
+
 
 class DatabaseModel(ItemModel):
     def __init__(self, client, icon_manager, parent=None):
@@ -662,8 +676,8 @@ class PlaylistModel(ItemModel):
 
     playlist_changed = pyqtSignal()
 
-    def __init__(self, client, root, parent_index=None):
-        super(PlaylistModel, self).__init__(client, root, parent_index)
+    def __init__(self, client, root, icon_manager, parent_index=None):
+        super(PlaylistModel, self).__init__(client, root, icon_manager, parent_index)
         self.__songid = None
         self.__headers = ('Name', 'Time')
 
@@ -981,6 +995,10 @@ class Item(object):
             return '{0:02}:{1:02}'.format(minutes, seconds)
         return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
 
+    @property
+    def is_song(self):
+        return False
+
 
 class Song(Item):
 
@@ -1116,10 +1134,6 @@ class ExpandableItem(Item):
         disc = lambda song: song['disc'] if 'disc' in song else None
         return [AlbumSong(song) for song in sorted(sorted(songs, key=track),
             key=disc)]
-
-    @property
-    def is_song(self):
-        return False
 
 
 class AllSongs(ExpandableItem):
