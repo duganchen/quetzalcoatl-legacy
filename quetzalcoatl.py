@@ -2057,21 +2057,27 @@ class IconManager(QObject):
 
     def __icon_downloaded(self):
         reply = self.sender()
-        mbid = self.__url_mbid[reply.url().toString()]
-        filepath = self.__image_downloaded(reply)
-        self.__icon_mbid_filepath[mbid] = filepath
-        self.__mbid_icon[mbid] = QIcon(filepath)
-        self.icon_loaded.emit(mbid)
-        reply.deleteLater()
+        url = reply.url().toString()
+
+        # I still don't understand how this edge case happens.
+        if not url == u'/':
+            mbid = self.__url_mbid[reply.url().toString()]
+            filepath = self.__image_downloaded(reply)
+            self.__icon_mbid_filepath[mbid] = filepath
+            self.__mbid_icon[mbid] = QIcon(filepath)
+            self.icon_loaded.emit(mbid)
+            reply.deleteLater()
 
     def __art_downloaded(self):
         reply = self.sender()
-        mbid = self.__url_mbid[reply.url().toString()]
-        filepath = self.__image_downloaded(reply)
-        self.__art_mbid_filepath[mbid] = filepath
-        self.__mbid_art[mbid] = QPixmap(filepath)
-        self.art_loaded.emit(mbid)
-        reply.deleteLater()
+        url = reply.url().toString()
+        if not url == u'/':
+            mbid = self.__url_mbid[reply.url().toString()]
+            filepath = self.__image_downloaded(reply)
+            self.__art_mbid_filepath[mbid] = filepath
+            self.__mbid_art[mbid] = QPixmap(filepath)
+            self.art_loaded.emit(mbid)
+            reply.deleteLater()
 
     def __image_downloaded(self, reply):
         image_path = path.join(BaseDirectory.xdg_cache_home, 'quetzalcoatl',
