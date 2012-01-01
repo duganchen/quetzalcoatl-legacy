@@ -2,6 +2,7 @@
 
 # TODO: Persist icon downloads
 # Icons should use artist and album information
+# Art label
 
 from sip import setapi
 
