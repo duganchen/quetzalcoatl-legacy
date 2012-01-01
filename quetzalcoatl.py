@@ -2058,6 +2058,7 @@ class IconManager(QObject):
         reply = self.sender()
         mbid = self.__url_mbid[reply.url().toString()]
         filepath = self.__image_downloaded(reply)
+        print 'art_downloaded. filepath={0}'.format(filepath)
         self.__art_mbid_filepath[mbid] = filepath
         self.__mega_mbid_icon[mbid] = QPixmap(filepath)
         self.art_loaded.emit(mbid)
