@@ -2050,7 +2050,7 @@ class IconManager(QObject):
         mbid = self.__url_mbid[reply.url().toString()]
         filepath = self.__image_downloaded(reply)
         self.__icon_mbid_filepath[mbid] = filepath
-        self.__small_mbid_icon[mbid] = QIcon(filepath)
+        self.__mbid_icon[mbid] = QIcon(filepath)
         self.icon_loaded.emit(mbid)
         reply.deleteLater()
 
@@ -2059,7 +2059,7 @@ class IconManager(QObject):
         mbid = self.__url_mbid[reply.url().toString()]
         filepath = self.__image_downloaded(reply)
         self.__art_mbid_filepath[mbid] = filepath
-        self.__mega_mbid_icon[mbid] = QPixmap(filepath)
+        self.__mbid_art[mbid] = QPixmap(filepath)
         self.art_loaded.emit(mbid)
         reply.deleteLater()
 
