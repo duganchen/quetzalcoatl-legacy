@@ -630,18 +630,27 @@ class ItemModel(QAbstractItemModel):
         """ Returns an iterator for the children. """
         return self.__root.children
 
-    def __refresh_icon(self, child, mbid):
+    def __refresh_icon(self, child, params_set):
+        params = dict(params_set)
         if child.is_song:
-            if 'musicbrainz_albumid' in child.song:
+            is_match = True
+            for key, value in params.iteritems():
+                if key not in child.song:
+                    is_match = False
+                    break
+                if child.song[key] != value:
+                    is_match = False
+                    break
+            if is_match: 
                 index = self.createIndex(child.row, 0, child) 
                 self.dataChanged.emit(index, index)
             return
 
         for grandchild in child.children:
-            self.__refresh_icon(grandchild, mbid)
+            self.__refresh_icon(grandchild, params)
 
-    def __icon_loaded(self, mbid):
-        self.__refresh_icon(self.__root, mbid)
+    def __icon_loaded(self, params_set):
+        self.__refresh_icon(self.__root, params_set)
 
 
 class DatabaseModel(ItemModel):
@@ -1934,16 +1943,16 @@ class Options(object):
         self.__data[key] = value
 
 
-
-
 class IconManager(QObject):
 
     """
-    Manages icons. Including pulling them from last.fm
+    Manages icons and album art for songs. Including pulling them from last.fm
     """
 
-    icon_loaded = pyqtSignal(str)
-    art_loaded = pyqtSignal(str)
+    # The keys are 'mbid', 'artist', 'album'. The parameters are
+    # dictionaries converted to frozen sets.
+    icon_loaded = pyqtSignal(frozenset)
+    art_loaded = pyqtSignal(frozenset)
 
     __last_fm_key = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
 
@@ -1961,23 +1970,28 @@ class IconManager(QObject):
 
     def __init__(self, parent=None):
         super(IconManager, self).__init__(parent)
+
         self.__network_access_manager = QNetworkAccessManager(self)
-        self.__url_mbid = {}
-        self.__icon_mbid_filepath = {}
-        self.__art_mbid_filepath = {}
-        self.__mbid_icon = {}
-        self.__mbid_art = {}
-        self.__mbids = set()
+        self.__url_params = {}
+        self.__icon_params_filepath = {}
+        self.__art_params_filepath = {}
+        self.__params_icon = {}
+        self.__params_art = {}
+
+        # Parameter sets that we have attempted to fetch.
+        self.__params_sets = set()
+
+        self.__request_params = set()
 
         try:
-            with open(self.__path('mbid_filename'), 'rb') as f:
-                self.__icon_mbid_filepath = cPickle.load(f)
+            with open(self.__path('params_filename'), 'rb') as f:
+                self.__icon_params_filepath = cPickle.load(f)
         except IOError:
-            self.__icon_mbid_filepath = {}
+            self.__icon_params_filepath = {}
 
-        for mbid, filepath in self.__icon_mbid_filepath:
+        for params, filepath in self.__icon_params_filepath:
             # Error handling might be nice here...
-            self.__mbid_icon[mbid] = QIcon(filepath)
+            self.__params_icon[params] = QIcon(filepath)
 
     def icon(self, song):
         """
@@ -1986,13 +2000,21 @@ class IconManager(QObject):
         signal is emitted on success.
         """
 
-        if 'musicbrainz_albumid' in song:
-            mbid = song['musicbrainz_albumid']
+        if 'musicbrainz_albumid' in song or ('artist' in song and 'album' in song):
+            params = {}
+            if 'musicbrainz_albumid' in song:
+                params['mbid'] = song['musicbrainz_albumid']
+            if 'artist' in song:
+                params['artist'] = song['artist']
+            if 'album' in song:
+                params['album'] = song['album']
 
-            if mbid in self.__mbid_icon:
-                return self.__mbid_icon[mbid]
+            params_set = frozenset(params.items())
 
-            self.__get_album_art(mbid)
+            if params_set in self.__params_icon:
+                return self.__params_icon[params_set]
+
+            self.__get_album_art(params_set)
 
         return self.__icon_by_filename(song)
 
@@ -2000,14 +2022,9 @@ class IconManager(QObject):
         """
         Serializes data for when the program is closed.
         """
-        with open(self.__path('mbid_filename'), 'wb') as f:
+        with open(self.__path('params_filename'), 'wb') as f:
             cPickle.dump(self.__icon_mbid_filepath, f,
                     cPickle.HIGHEST_PROTOCOL)
-
-    def initialize(self):
-        for mbid, filepath in self.__icon_mbid_filepath:
-            # Error handling might be nice here...
-            self.__mbid_icon[mbid] = QIcon(filepath)
 
     @classmethod
     def __icon_by_filename(self, song):
@@ -2018,44 +2035,69 @@ class IconManager(QObject):
             return self.__stock_icons[ext]
         return QIcon(KIcon('audio-x-generic'))
 
-    def __get_album_art(self, mbid):
-        if mbid in self.__mbids:
+    def __get_album_art(self, params_set):
+        if params_set in self.__params_sets:
             return
+        self.__params_sets.add(params_set)
 
-        self.__mbids.add(mbid)
         request = QNetworkRequest()
-        request.setUrl(QUrl(self.__album_info_url(mbid)))
+        request.setUrl(QUrl(self.__album_info_url(params_set)))
         request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
         reply = self.__network_access_manager.get(request)
         reply.finished.connect(self.__album_info_downloaded)
 
+    @classmethod
+    def __album_info_url(cls, params_set):
+        scheme = 'http'
+        netloc = 'ws.audioscrobbler.com'
+        path = '/2.0/'
+        params = dict(params_set)
+        params['api_key'] = cls.__last_fm_key
+        params['method'] = 'album.getinfo'
+        params['format'] = 'json'
+        params['autocorrect'] = 1
+        query = urlencode(params)
+        fragment = ''
+        parts = (scheme, netloc, path, query, fragment)
+        return urlunsplit(parts)
+
     def __album_info_downloaded(self):
         info_reply = self.sender()
         query = urlparse(info_reply.url().toString()).query
-        mbid = parse_qs(query)['mbid'][0]
+        qs = parse_qs(query)
+        params = {}
+        if 'mbid' in qs:
+            params['mbid'] = qs['mbid'][0]
+        if 'artist' in qs:
+            params['artist'] = qs['artist'][0]
+        if 'album' in qs:
+            params['album'] = qs['album'][0]
+
+        params_set = frozenset(params.items())
 
         data = json.loads(info_reply.readAll().data())
 
         if 'error' in data:
+            print data
             return
 
-        mega_url = [x['#text'] for x in data['album']['image']
+        art_url = [x['#text'] for x in data['album']['image']
                 if x['size'] == 'mega'][0]
-        self.__url_mbid[mega_url] = mbid
+        self.__url_params[art_url] = params_set
 
-        mega_request = QNetworkRequest()
-        mega_request.setUrl(QUrl(mega_url))
-        mega_reply = self.__network_access_manager.get(mega_request)
-        mega_reply.finished.connect(self.__art_downloaded)
+        art_request = QNetworkRequest()
+        art_request.setUrl(QUrl(art_url))
+        art_reply = self.__network_access_manager.get(art_request)
+        art_reply.finished.connect(self.__art_downloaded)
 
-        small_url = [x['#text'] for x in data['album']['image']
+        icon_url = [x['#text'] for x in data['album']['image']
                 if x['size'] == 'small'][0]
-        self.__url_mbid[small_url] = mbid
+        self.__url_params[icon_url] = params_set
 
-        small_request = QNetworkRequest()
-        small_request.setUrl(QUrl(small_url))
-        small_reply = self.__network_access_manager.get(small_request)
-        small_reply.finished.connect(self.__icon_downloaded)
+        icon_request = QNetworkRequest()
+        icon_request.setUrl(QUrl(icon_url))
+        icon_reply = self.__network_access_manager.get(icon_request)
+        icon_reply.finished.connect(self.__icon_downloaded)
 
         info_reply.deleteLater()
 
@@ -2065,22 +2107,24 @@ class IconManager(QObject):
 
         # I still don't understand how this edge case happens.
         if not url == u'/':
-            mbid = self.__url_mbid[reply.url().toString()]
+            params_set = self.__url_params[reply.url().toString()]
             filepath = self.__image_downloaded(reply)
-            self.__icon_mbid_filepath[mbid] = filepath
-            self.__mbid_icon[mbid] = QIcon(filepath)
-            self.icon_loaded.emit(mbid)
+            self.__icon_params_filepath[params_set] = filepath
+            self.__params_icon[params_set] = QIcon(filepath)
+            self.icon_loaded.emit(params_set)
             reply.deleteLater()
 
     def __art_downloaded(self):
         reply = self.sender()
         url = reply.url().toString()
+
+        # I still don't understand how this edge case happens.
         if not url == u'/':
-            mbid = self.__url_mbid[reply.url().toString()]
+            params_set = self.__url_params[reply.url().toString()]
             filepath = self.__image_downloaded(reply)
-            self.__art_mbid_filepath[mbid] = filepath
-            self.__mbid_art[mbid] = QPixmap(filepath)
-            self.art_loaded.emit(mbid)
+            self.__art_params_filepath[params_set] = filepath
+            self.__params_art[params_set] = QPixmap(filepath)
+            self.art_loaded.emit(params_set)
             reply.deleteLater()
 
     def __image_downloaded(self, reply):
@@ -2099,17 +2143,6 @@ class IconManager(QObject):
         if not path.exists(root_path):
             makedirs(root_path)
         return path.join(root_path, filename)
-
-    @classmethod
-    def __album_info_url(cls, mbid):
-        scheme = 'http'
-        netloc = 'ws.audioscrobbler.com'
-        path = '/2.0/'
-        query = urlencode({'mbid': mbid, 'api_key': cls.__last_fm_key,
-            'method': 'album.getinfo', 'format': 'json'})
-        fragment = ''
-        parts = (scheme, netloc, path, query, fragment)
-        return urlunsplit(parts)
 
 
 if __name__ == "__main__":
