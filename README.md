@@ -6,8 +6,9 @@ Quetzalcoatl is an MPD client for KDE.
 
 It's one (Python) file. To run it, just make it executable and execute it.
 
-It requires [python-mpd](http://jatreuman.indefero.net/p/python-mpd/) 3.0 and
-Python 2 (2.6 or newer).
+It requires [python-mpd](http://jatreuman.indefero.net/p/python-mpd/) 3.0,
+[PyXDG](http://www.freedesktop.org/wiki/Software/pyxdg), and Python 2 (2.6 or
+newer).
 
 Please note that it needs to be run on a
 [PEP394](http://www.python.org/dev/peps/pep-0394/)-compliant Linux system.
