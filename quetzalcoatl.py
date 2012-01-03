@@ -23,8 +23,8 @@ from PyQt4.QtCore import QDataStream, QEvent, QIODevice, QMimeData
 from PyQt4.QtCore import QModelIndex, QObject, QRegExp, QSize, Qt, QTimer
 from PyQt4.QtCore import QUrl, pyqtSignal
 from PyQt4.QtGui import QFont, QFormLayout, QIcon, QKeySequence, QLabel
-from PyQt4.QtGui import QSlider, QPixmap, QRegExpValidator, QSplitter
-from PyQt4.QtGui import QToolTip, QTreeView, QVBoxLayout, QWidget
+from PyQt4.QtGui import QSizePolicy, QSlider, QPixmap, QRegExpValidator
+from PyQt4.QtGui import QSplitter, QToolTip, QTreeView, QVBoxLayout, QWidget
 from PyQt4.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from mpd import MPDClient, MPDError
 from base64 import b64decode
@@ -172,20 +172,29 @@ class UI(KMainWindow):
         database_view.setModel(database_model)
         database_view.setDragEnabled(True)
         database_view.setHeaderHidden(True)
-        playlist_view = PlaylistView()
+
+        playlist_splitter = QSplitter(splitter)
+        playlist_splitter.setOrientation(Qt.Vertical)
+        art_label = ArtLabel(icon_manager, playlist_splitter)
+        poller.current_song_changed.connect(art_label.set_song)
+
+        playlist_view = PlaylistView(playlist_splitter)
         playlist_view.combined_timed_changed.connect(self.__set_combined_time)
 
         delete.triggered.connect(playlist_view.delete_selected)
 
-        splitter.addWidget(playlist_view)
+        #splitter.addWidget(playlist_view)
 
         database_model.server_updated.connect(poller.poll)
+
         playlist_model = PlaylistModel(client, Item(), icon_manager)
         playlist_view.doubleClicked.connect(playlist_model.handleDoubleClick)
         playlist_view.setModel(playlist_model)
         poller.playlist_changed.connect(playlist_model.set_playlist)
-        poller.song_id_changed.connect(playlist_model.set_songid)
-        poller.song_id_changed.connect(controller.set_songid)
+        #poller.song_id_changed.connect(playlist_model.set_songid)
+        poller.current_song_changed.connect(playlist_model.set_song)
+        #poller.song_id_changed.connect(controller.set_songid)
+        poller.current_song_changed.connect(controller.set_song)
         playlist_model.server_updated.connect(poller.poll)
 
         self.__status_bar = self.statusBar()
@@ -266,6 +275,91 @@ class UI(KMainWindow):
         self.__combined_time.setText(time)
 
 
+class ArtLabel(QLabel):
+ 
+    """
+    A QLabel that scales album art images properly.
+    """
+ 
+    def __init__(self, icon_manager, parent=None):
+ 
+        """ Initializes the art label. """
+ 
+        super(ArtLabel, self).__init__(parent)
+        self.pixmap = QPixmap()
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+        self.__icon_manager = icon_manager
+        self.__icon_manager.art_loaded.connect(self.recheck_art)
+        self.__current_song = {}
+
+    def set_song(self, song):
+        print 'setting song to {0}'.format(song)
+        self.__current_song = song
+        if 'id' in self.__current_song:
+            self.load_art(self.__current_song)
+        else:
+            self.clear()
+
+    def load_art(self, song):
+        print 'LOADING ART'
+        self.__current_song = song
+        filename = self.__icon_manager.get_art_filename(song)
+
+        if filename is None:
+            print 'ART NOT FOUND'
+            self.clear()
+            return
+
+        print 'ART FOUND'
+        self.load(filename)
+
+    def recheck_art(self):
+        """
+        Slot to call when art has been loaded.
+        """
+        print 'RECHECKING ART'
+        print 'current song is {0}'.format(self.__current_song)
+        self.set_song(self.__current_song)
+
+    def resizeEvent(self, event):
+ 
+        """ Handles resize events. """
+ 
+        if not self.pixmap.isNull():
+            size = event.size()
+            self.refresh(size.width(), size.height())
+ 
+    def load(self, filename):
+        """
+        The slot to call when you want to load a pixmap.
+        """
+        self.pixmap.load(filename)
+        self.refresh(self.width(), self.height())
+ 
+    def refresh(self, width, height):
+        pixmapWidth = self.pixmap.width()
+        pixmapHeight = self.pixmap.height()
+ 
+        if pixmapHeight > 0:
+            pixmapRatio = pixmapWidth / pixmapHeight
+        else:
+            pixmapRatio = pixmapWidth
+ 
+        w = width
+        h = height
+ 
+        if h > 0:
+            ratio = w / h
+        else:
+            ratio = w
+ 
+        if pixmapRatio < ratio:
+            self.setPixmap(self.pixmap.scaledToHeight(h, Qt.SmoothTransformation))
+        else:
+            self.setPixmap(self.pixmap.scaledToWidth(w, Qt.SmoothTransformation))
+
+
 class UIController(QObject):
     """
     The UI class's slots.
@@ -284,15 +378,15 @@ class UIController(QObject):
         self.__shuffle = False
         self.__elapsed = 0
 
-    def set_songid(self, songid):
-        self.__songid = songid
+    def set_song(self, song):
+        self.__song = song
 
     def setElapsed(self, value):
         self.__elapsed = value
 
     def seekToElapsed(self):
-        if self.__songid is not None and self.__state != 'stop':
-            self.__client.seekid(self.__songid, self.__elapsed)
+        if self.__song != {} and self.__state != 'stop':
+            self.__client.seekid(self.__song['id'], self.__elapsed)
             self.server_updated.emit()
 
     def set_repeat(self, value):
@@ -330,9 +424,7 @@ class UIController(QObject):
 
     def skip_forward(self):
         self.__client.next()
-        print 'skipping forward'
         self.server_updated.emit()
-        print 'done'
 
     def set_state(self, state):
 
@@ -632,6 +724,9 @@ class ItemModel(QAbstractItemModel):
 
     def __refresh_icon(self, child, params_set):
         params = dict(params_set)
+        if 'mbid' in params:
+            params['musicbrainz_albumid'] = params['mbid']
+            del params['mbid']
         if child.is_song:
             is_match = True
             for key, value in params.iteritems():
@@ -643,7 +738,7 @@ class ItemModel(QAbstractItemModel):
                     break
             if is_match: 
                 parent_index = self.createIndex(child.parent.row, 0, child.parent)
-                index = self.createIndex(child.row, 0, child) 
+                index = self.index(child.row, 0, parent_index) 
                 self.dataChanged.emit(index, index)
             return
 
@@ -781,13 +876,16 @@ class PlaylistModel(ItemModel):
         else:
             return super(PlaylistModel, self).data(index, role)
 
-    def set_songid(self, value):
+    def set_song(self, new_song):
 
-        if self.__songid == value:
+        if not 'id' in new_song:
+            return
+
+        if self.__songid == new_song['id']:
             return
 
         old_id = self.__songid
-        self.__songid = value
+        self.__songid = new_song['id']
 
         for row, song in enumerate(self.children):
 
@@ -796,6 +894,23 @@ class PlaylistModel(ItemModel):
                 self.dataChanged.emit(self.index(row, 0), self.index(row, 1))
 
         self.playlist_changed.emit()
+
+
+    #def set_songid(self, value):
+
+    #    if self.__songid == value:
+    #        return
+
+    #    old_id = self.__songid
+    #    self.__songid = value
+
+    #    for row, song in enumerate(self.children):
+
+    #        # Clear the old song and bold the new one.
+    #        if song['id'] == old_id or song['id'] == self.__songid:
+    #            self.dataChanged.emit(self.index(row, 0), self.index(row, 1))
+
+    #    self.playlist_changed.emit()
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
 
@@ -1555,9 +1670,11 @@ class Poller(QObject):
     shuffle_changed = pyqtSignal(bool)
     state_changed = pyqtSignal(str)
     time_changed = pyqtSignal(int, int)
-    song_id_changed = pyqtSignal(int)
+    #song_id_changed = pyqtSignal(int)
     updated = pyqtSignal()
     stored_playlist_updated = pyqtSignal()
+
+    current_song_changed = pyqtSignal(dict)
 
     def __init__(self, client, parent=None):
         super(Poller, self).__init__(parent)
@@ -1621,11 +1738,14 @@ class Poller(QObject):
             elapsed, total = status['time']
             self.time_changed.emit(elapsed, total)
 
-        if self.__is_changed(status, 'songid'):
-            if 'songid' in status:
-                self.song_id_changed.emit(status['songid'])
+        if self.__is_changed(status, 'id'):
+            if 'id' in status:
+                #self.song_id_changed.emit(status['songid'])
+                print 'emitting songid'
+                self.current_song_changed.emit(self.__client.currentsong())
             else:
-                self.song_id_changed.emit(None)
+                #self.song_id_changed.emit(None)
+                self.current_song_changed.emit({})
 
         if 'playlist' in status:
             if 'playlist' in self.__status:
@@ -1669,7 +1789,8 @@ class Poller(QObject):
         self.repeat_changed.emit(False)
         self.shuffle_changed.emit(False)
         self.state_changed.emit('STOP')
-        self.song_id_changed.emit(None)
+        #self.song_id_changed.emit(None)
+        self.current_song_changed.emit({})
 
 
 class Client(QObject):
@@ -1953,7 +2074,8 @@ class IconManager(QObject):
     # The keys are 'mbid', 'artist', 'album'. The parameters are
     # dictionaries converted to frozen sets.
     icon_loaded = pyqtSignal(frozenset)
-    art_loaded = pyqtSignal(frozenset)
+
+    art_loaded = pyqtSignal()
 
     __last_fm_key = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
 
@@ -2001,16 +2123,10 @@ class IconManager(QObject):
         signal is emitted on success.
         """
 
-        if 'musicbrainz_albumid' in song or ('artist' in song and 'album' in song):
-            params = {}
-            if 'musicbrainz_albumid' in song:
-                params['mbid'] = song['musicbrainz_albumid']
-            if 'artist' in song:
-                params['artist'] = song['artist']
-            if 'album' in song:
-                params['album'] = song['album']
+        params_set = self.__get_song_key(song)
 
-            params_set = frozenset(params.items())
+        params = dict(params_set)
+        if 'mbid' in params or ('artist' in params and 'album' in params):
 
             if params_set in self.__params_icon:
                 return self.__params_icon[params_set]
@@ -2018,6 +2134,9 @@ class IconManager(QObject):
             self.__get_album_art(params_set)
 
         return self.__icon_by_filename(song)
+    
+    def get_art_filename(self, song):
+        return self.__art_params_filepath.get(self.__get_song_key(song))
 
     def close(self):
         """
@@ -2053,7 +2172,7 @@ class IconManager(QObject):
     def __album_info_url(cls, params_set):
         scheme = 'http'
         netloc = 'ws.audioscrobbler.com'
-        path = '/2.0/'
+        url_path = '/2.0/'
         params = dict(params_set)
         params['api_key'] = cls.__last_fm_key
         params['method'] = 'album.getinfo'
@@ -2061,7 +2180,7 @@ class IconManager(QObject):
         params['autocorrect'] = 1
         query = urlencode(params)
         fragment = ''
-        parts = (scheme, netloc, path, query, fragment)
+        parts = (scheme, netloc, url_path, query, fragment)
         return urlunsplit(parts)
 
     def __album_info_downloaded(self):
@@ -2123,11 +2242,12 @@ class IconManager(QObject):
 
         # I still don't understand how this edge case happens.
         if not url == u'/':
+            print 'art downloaded'
             params_set = self.__url_params[reply.url().toString()]
             filepath = self.__image_downloaded(reply)
             self.__art_params_filepath[params_set] = filepath
-            self.__params_art[params_set] = QPixmap(filepath)
-            self.art_loaded.emit(params_set)
+            self.__params_art[params_set] = filepath
+            self.art_loaded.emit()
             reply.deleteLater()
 
     def __image_downloaded(self, reply):
@@ -2146,6 +2266,18 @@ class IconManager(QObject):
         if not path.exists(root_path):
             makedirs(root_path)
         return path.join(root_path, filename)
+
+    def __get_song_key(self, song):
+        """
+        Translates a song into a hashable three-part last.fm lookup key.
+        """
+        params = {}
+        if 'musicbrainz_albumid' in song:
+            params['mbid'] = song['musicbrainz_albumid']
+        for key in ('artist', 'album'):
+            if key in song:
+                params[key] = song[key]
+        return frozenset(params.items())
 
 
 if __name__ == "__main__":
