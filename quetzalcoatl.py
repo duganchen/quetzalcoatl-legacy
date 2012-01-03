@@ -642,6 +642,7 @@ class ItemModel(QAbstractItemModel):
                     is_match = False
                     break
             if is_match: 
+                parent_index = self.createIndex(child.parent.row, 0, child.parent)
                 index = self.createIndex(child.row, 0, child) 
                 self.dataChanged.emit(index, index)
             return
