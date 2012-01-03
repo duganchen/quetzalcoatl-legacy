@@ -2029,7 +2029,9 @@ class IconManager(QObject):
     @classmethod
     def __icon_by_filename(self, song):
 
-        _, ext = path.splitext(song['file'])
+        _, ext = posixpath.splitext(song['file'])
+
+        ext = ext[1:].lower()
 
         if ext in self.__stock_icons:
             return self.__stock_icons[ext]
