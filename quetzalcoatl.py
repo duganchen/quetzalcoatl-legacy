@@ -294,7 +294,6 @@ class ArtLabel(QLabel):
         self.__current_song = {}
 
     def set_song(self, song):
-        print 'setting song to {0}'.format(song)
         self.__current_song = song
         if 'id' in self.__current_song:
             self.load_art(self.__current_song)
@@ -302,24 +301,19 @@ class ArtLabel(QLabel):
             self.clear()
 
     def load_art(self, song):
-        print 'LOADING ART'
         self.__current_song = song
         filename = self.__icon_manager.get_art_filename(song)
 
         if filename is None:
-            print 'ART NOT FOUND'
             self.clear()
             return
 
-        print 'ART FOUND'
         self.load(filename)
 
     def recheck_art(self):
         """
         Slot to call when art has been loaded.
         """
-        print 'RECHECKING ART'
-        print 'current song is {0}'.format(self.__current_song)
         self.set_song(self.__current_song)
 
     def resizeEvent(self, event):
@@ -1738,10 +1732,9 @@ class Poller(QObject):
             elapsed, total = status['time']
             self.time_changed.emit(elapsed, total)
 
-        if self.__is_changed(status, 'id'):
-            if 'id' in status:
+        if self.__is_changed(status, 'song'):
+            if 'song' in status:
                 #self.song_id_changed.emit(status['songid'])
-                print 'emitting songid'
                 self.current_song_changed.emit(self.__client.currentsong())
             else:
                 #self.song_id_changed.emit(None)
@@ -2242,7 +2235,6 @@ class IconManager(QObject):
 
         # I still don't understand how this edge case happens.
         if not url == u'/':
-            print 'art downloaded'
             params_set = self.__url_params[reply.url().toString()]
             filepath = self.__image_downloaded(reply)
             self.__art_params_filepath[params_set] = filepath
