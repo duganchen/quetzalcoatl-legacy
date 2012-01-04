@@ -1,9 +1,5 @@
 #!/usr/bin/env python2
 
-# TODO: Persist icon downloads
-# Icons should use artist and album information
-# Art label
-
 from sip import setapi
 
 setapi("QDate", 2)
@@ -156,11 +152,11 @@ class UI(KMainWindow):
         self.__slider.sliderReleased.connect(self.__release_slider)
         layout.addWidget(splitter)
 
-        icon_manager = IconManager(self)
+        self.__icon_manager = IconManager(self)
 
         database_view = DatabaseView()
         splitter.addWidget(database_view)
-        database_model = DatabaseModel(client, icon_manager)
+        database_model = DatabaseModel(client, self.__icon_manager)
         database_model.append_row(Playlists())
         database_model.append_row(Artists())
         database_model.append_row(Albums())
@@ -175,7 +171,7 @@ class UI(KMainWindow):
 
         playlist_splitter = QSplitter(splitter)
         playlist_splitter.setOrientation(Qt.Vertical)
-        art_label = ArtLabel(icon_manager, playlist_splitter)
+        art_label = ArtLabel(self.__icon_manager, playlist_splitter)
         poller.current_song_changed.connect(art_label.set_song)
 
         playlist_view = PlaylistView(playlist_splitter)
@@ -183,17 +179,13 @@ class UI(KMainWindow):
 
         delete.triggered.connect(playlist_view.delete_selected)
 
-        #splitter.addWidget(playlist_view)
-
         database_model.server_updated.connect(poller.poll)
 
-        playlist_model = PlaylistModel(client, Item(), icon_manager)
+        playlist_model = PlaylistModel(client, Item(), self.__icon_manager)
         playlist_view.doubleClicked.connect(playlist_model.handleDoubleClick)
         playlist_view.setModel(playlist_model)
         poller.playlist_changed.connect(playlist_model.set_playlist)
-        #poller.song_id_changed.connect(playlist_model.set_songid)
         poller.current_song_changed.connect(playlist_model.set_song)
-        #poller.song_id_changed.connect(controller.set_songid)
         poller.current_song_changed.connect(controller.set_song)
         playlist_model.server_updated.connect(poller.poll)
 
@@ -223,6 +215,9 @@ class UI(KMainWindow):
 
         playlist_saver = PlaylistSaver(client, self)
         save_playlist.triggered.connect(playlist_saver.show)
+
+    def closeEvent(self, event):
+        self.__icon_manager.close()
 
     def __set_time(self, elapsed, total):
         if self.__state != 'STOP':
@@ -889,23 +884,6 @@ class PlaylistModel(ItemModel):
 
         self.playlist_changed.emit()
 
-
-    #def set_songid(self, value):
-
-    #    if self.__songid == value:
-    #        return
-
-    #    old_id = self.__songid
-    #    self.__songid = value
-
-    #    for row, song in enumerate(self.children):
-
-    #        # Clear the old song and bold the new one.
-    #        if song['id'] == old_id or song['id'] == self.__songid:
-    #            self.dataChanged.emit(self.index(row, 0), self.index(row, 1))
-
-    #    self.playlist_changed.emit()
-
     def headerData(self, section, orientation, role=Qt.DisplayRole):
 
         if self.__header_is_valid(section, orientation, role):
@@ -1115,7 +1093,7 @@ class Item(object):
         if hours == 0 and minutes == 0:
             return '0:{0:02}'.format(seconds)
         if hours == 0:
-            return '{0:02}:{1:02}'.format(minutes, seconds)
+            return '{0}:{1:02}'.format(minutes, seconds)
         return '{0}:{1:02}:{1:02}'.format(hours, minutes, seconds)
 
     @property
@@ -1664,7 +1642,6 @@ class Poller(QObject):
     shuffle_changed = pyqtSignal(bool)
     state_changed = pyqtSignal(str)
     time_changed = pyqtSignal(int, int)
-    #song_id_changed = pyqtSignal(int)
     updated = pyqtSignal()
     stored_playlist_updated = pyqtSignal()
 
@@ -1782,7 +1759,6 @@ class Poller(QObject):
         self.repeat_changed.emit(False)
         self.shuffle_changed.emit(False)
         self.state_changed.emit('STOP')
-        #self.song_id_changed.emit(None)
         self.current_song_changed.emit({})
 
 
@@ -2089,25 +2065,40 @@ class IconManager(QObject):
 
         self.__network_access_manager = QNetworkAccessManager(self)
         self.__url_params = {}
-        self.__icon_params_filepath = {}
-        self.__art_params_filepath = {}
         self.__params_icon = {}
         self.__params_art = {}
 
-        # Parameter sets that we have attempted to fetch.
         self.__params_sets = set()
 
         self.__request_params = set()
 
+        # Parameter sets that we have attempted to fetch.
         try:
-            with open(self.__path('params_filename'), 'rb') as f:
+            with open(self.__path('params_sets'), 'rb') as f:
+                self.__params_sets = cPickle.load(f)
+        except IOError:
+            self.__params_sets = set()
+
+        # Key-filename pairs for icons.
+        try:
+            with open(self.__path('params_icon_path'), 'rb') as f:
                 self.__icon_params_filepath = cPickle.load(f)
         except IOError:
             self.__icon_params_filepath = {}
 
-        for params, filepath in self.__icon_params_filepath:
-            # Error handling might be nice here...
+        for params, filepath in self.__icon_params_filepath.iteritems():
             self.__params_icon[params] = QIcon(filepath)
+
+        # Key-filename pairs for art.
+        try:
+            with open(self.__path('params_art_path'), 'rb') as f:
+                self.__art_params_filepath = cPickle.load(f)
+        except IOError:
+            self.__art_params_filepath = {}
+
+        for params, filepath in self.__art_params_filepath.iteritems():
+            self.__params_art[params] = QPixmap(filepath)
+
 
     def icon(self, song):
         """
@@ -2135,8 +2126,20 @@ class IconManager(QObject):
         """
         Serializes data for when the program is closed.
         """
-        with open(self.__path('params_filename'), 'wb') as f:
-            cPickle.dump(self.__icon_mbid_filepath, f,
+
+        # The keys that we've already attempted to fetch
+        with open(self.__path('params_sets'), 'wb') as f:
+            cPickle.dump(self.__params_sets, f,
+                    cPickle.HIGHEST_PROTOCOL)
+
+        # Key-filename pairs for icons.
+        with open(self.__path('params_icon_path'), 'wb') as f:
+            cPickle.dump(self.__icon_params_filepath, f,
+                    cPickle.HIGHEST_PROTOCOL)
+
+        # Key-filename pairs for art.
+        with open(self.__path('params_art_path'), 'wb') as f:
+            cPickle.dump(self.__art_params_filepath, f,
                     cPickle.HIGHEST_PROTOCOL)
 
     @classmethod
@@ -2220,27 +2223,23 @@ class IconManager(QObject):
         reply = self.sender()
         url = reply.url().toString()
 
-        # I still don't understand how this edge case happens.
-        if not url == u'/':
-            params_set = self.__url_params[reply.url().toString()]
-            filepath = self.__image_downloaded(reply)
-            self.__icon_params_filepath[params_set] = filepath
-            self.__params_icon[params_set] = QIcon(filepath)
-            self.icon_loaded.emit(params_set)
-            reply.deleteLater()
+        params_set = self.__url_params[reply.url().toString()]
+        filepath = self.__image_downloaded(reply)
+        self.__icon_params_filepath[params_set] = filepath
+        self.__params_icon[params_set] = QIcon(filepath)
+        self.icon_loaded.emit(params_set)
+        reply.deleteLater()
 
     def __art_downloaded(self):
         reply = self.sender()
         url = reply.url().toString()
 
-        # I still don't understand how this edge case happens.
-        if not url == u'/':
-            params_set = self.__url_params[reply.url().toString()]
-            filepath = self.__image_downloaded(reply)
-            self.__art_params_filepath[params_set] = filepath
-            self.__params_art[params_set] = filepath
-            self.art_loaded.emit()
-            reply.deleteLater()
+        params_set = self.__url_params[reply.url().toString()]
+        filepath = self.__image_downloaded(reply)
+        self.__art_params_filepath[params_set] = filepath
+        self.__params_art[params_set] = filepath
+        self.art_loaded.emit()
+        reply.deleteLater()
 
     def __image_downloaded(self, reply):
         image_path = path.join(BaseDirectory.xdg_cache_home, 'quetzalcoatl',
