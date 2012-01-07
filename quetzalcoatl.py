@@ -746,7 +746,7 @@ class ItemModel(QAbstractItemModel):
                 if key not in child.song:
                     is_match = False
                     break
-                if child.song[key].decode('utf-8') != value.decode('utf-8'):
+                if child.song[key] != value:
                     is_match = False
                     break
             if is_match: 
@@ -2164,6 +2164,7 @@ class IconManager(QObject):
         params_set = self.__get_song_key(song)
 
         params = dict(params_set)
+
         if 'mbid' in params or ('artist' in params and 'album' in params):
 
             if params_set in self.__params_icon:
@@ -2213,7 +2214,7 @@ class IconManager(QObject):
         self.__params_sets.add(params_set)
 
         request = QNetworkRequest()
-        request.setUrl(QUrl(self.__album_info_url(params_set)))
+        request.setUrl(QUrl.fromEncoded(self.__album_info_url(params_set)))
         request.setRawHeader('User-Agent', 'Quetzalcoatl/2.0')
         reply = self.__network_access_manager.get(request)
         reply.finished.connect(self.__album_info_downloaded)
@@ -2238,12 +2239,13 @@ class IconManager(QObject):
         query = urlparse(info_reply.url().toString()).query
         qs = parse_qs(query)
         params = {}
+
         if 'mbid' in qs:
-            params['mbid'] = qs['mbid'][0]
+            params['mbid'] = qs['mbid'][0].encode('utf-8')
         if 'artist' in qs:
-            params['artist'] = qs['artist'][0]
+            params['artist'] = qs['artist'][0].encode('utf-8')
         if 'album' in qs:
-            params['album'] = qs['album'][0]
+            params['album'] = qs['album'][0].encode('utf-8')
 
         params_set = frozenset(params.items())
 
