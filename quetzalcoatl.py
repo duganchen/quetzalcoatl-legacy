@@ -742,6 +742,7 @@ class ItemModel(QAbstractItemModel):
             del params['mbid']
         if child.is_song:
             is_match = True
+
             for key, value in params.iteritems():
                 if key not in child.song:
                     is_match = False
@@ -753,6 +754,7 @@ class ItemModel(QAbstractItemModel):
                 parent_index = self.createIndex(child.parent.row, 0, child.parent)
                 index = self.index(child.row, 0, parent_index) 
                 self.dataChanged.emit(index, index)
+
             return
 
         for grandchild in child.children:
