@@ -767,8 +767,8 @@ class DatabaseModel(ItemModel):
         """
         print 'Server Updated'
 
-    def update_stored_playlist(self):
-        print 'Stored playlist updated'
+    def update_stored_playlist(self, playlists):
+        print 'Playlists are now {}'.format(playlists)
 
 
 class PlaylistModel(ItemModel):
@@ -1644,7 +1644,7 @@ class Poller(QObject):
     state_changed = pyqtSignal(str)
     time_changed = pyqtSignal(int, int)
     updated = pyqtSignal()
-    stored_playlist_updated = pyqtSignal()
+    stored_playlist_updated = pyqtSignal(list)
 
     current_song_changed = pyqtSignal(dict)
 
@@ -1687,7 +1687,7 @@ class Poller(QObject):
                 if 'update' in updates:
                     self.updated.emit()
                 if 'stored_playlist' in updates:
-                    self.stored_playlist_updated.emit()
+                    self.stored_playlist_updated.emit(self.__client.listplaylists())
                 self.__client.send_idle('update', 'stored_playlist')
 
         # The results of the status command will always be there,
