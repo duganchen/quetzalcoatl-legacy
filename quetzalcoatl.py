@@ -12,8 +12,7 @@ setapi("QUrl", 2)
 
 from PyKDE4.kdecore import ki18n, KAboutData, KCmdLineArgs
 from PyKDE4.kdeui import KAction, KApplication, KDialog, KIcon, KLineEdit
-from PyKDE4.kdeui import KMainWindow
-from PyKDE4.kdeui import KMessageBox, KToggleAction
+from PyKDE4.kdeui import KMainWindow, KMenu, KMessageBox, KToggleAction
 from PyQt4.QtCore import QAbstractItemModel, QByteArray
 from PyQt4.QtCore import QDataStream, QEvent, QIODevice, QMimeData
 from PyQt4.QtCore import QModelIndex, QObject, QRegExp, QSize, Qt, QTimer
@@ -154,7 +153,7 @@ class UI(KMainWindow):
 
         self.__icon_manager = IconManager(self)
 
-        database_view = DatabaseView()
+        database_view = DatabaseView(client)
         splitter.addWidget(database_view)
         database_model = DatabaseModel(client, self.__icon_manager)
         database_model.append_row(Playlists())
@@ -509,9 +508,29 @@ class ItemView(QTreeView):
 
 class DatabaseView(ItemView):
 
-    def __init__(self, parent=None):
+    def __init__(self, client, parent=None):
         super(DatabaseView, self).__init__(parent)
         self.doubleClicked.connect(self.__handleDoubleClick)
+
+        self.__menu = KMenu(self)
+        action = KAction(KIcon('list-remove'),
+                '[x]: remove playlist', self)
+        action.triggered.connect(self.__delete)
+        self.__menu.addAction(action)
+        self.__client = client
+
+        self.__index_to_delete = None
+
+
+    def contextMenuEvent(self, event):
+        self.__index_to_delete = None
+        index = self.indexAt(event.pos())
+        if not index.isValid():
+            return
+        item = self.model().itemFromIndex(index)
+        if type(item) == Playlist:
+            self.__index_to_delete = index
+            self.__menu.exec_(event.globalPos())
 
     def __handleDoubleClick(self, index):
 
@@ -520,6 +539,10 @@ class DatabaseView(ItemView):
             return
 
         self.model().play_indexes(self.selectedIndexes(), index)
+
+    def __delete(self):
+        item = self.model().itemFromIndex(self.__index_to_delete)
+        self.__client.rm(item.playlist)
 
 
 class PlaylistView(ItemView):
@@ -1305,6 +1328,10 @@ class Playlist(ExpandableItem):
         # AlbumSong, for the double-click behavior.
         return [RandomSong(x) for x
                 in client.listplaylistinfo(self.__playlist)]
+
+    @property
+    def playlist(self):
+        return self.__playlist
 
 
 class Artists(ExpandableItem):
