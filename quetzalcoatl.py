@@ -746,7 +746,7 @@ class ItemModel(QAbstractItemModel):
                 if key not in child.song:
                     is_match = False
                     break
-                if child.song[key] != value:
+                if child.song[key].decode('utf-8') != value.decode('utf-8'):
                     is_match = False
                     break
             if is_match: 
@@ -2214,7 +2214,7 @@ class IconManager(QObject):
 
         request = QNetworkRequest()
         request.setUrl(QUrl(self.__album_info_url(params_set)))
-        request.setRawHeader('User-Agent', 'Quetzalcoatl 2.0')
+        request.setRawHeader('User-Agent', 'Quetzalcoatl/2.0')
         reply = self.__network_access_manager.get(request)
         reply.finished.connect(self.__album_info_downloaded)
 
@@ -2250,6 +2250,7 @@ class IconManager(QObject):
         data = json.loads(info_reply.readAll().data())
 
         if 'error' in data:
+            print info_reply.url().toString()
             print data
             return
 
@@ -2277,22 +2278,24 @@ class IconManager(QObject):
         reply = self.sender()
         url = reply.url().toString()
 
-        params_set = self.__url_params[reply.url().toString()]
-        filepath = self.__image_downloaded(reply)
-        self.__icon_params_filepath[params_set] = filepath
-        self.__params_icon[params_set] = QIcon(filepath)
-        self.icon_loaded.emit(params_set)
+        if url != '/':
+            params_set = self.__url_params[reply.url().toString()]
+            filepath = self.__image_downloaded(reply)
+            self.__icon_params_filepath[params_set] = filepath
+            self.__params_icon[params_set] = QIcon(filepath)
+            self.icon_loaded.emit(params_set)
         reply.deleteLater()
 
     def __art_downloaded(self):
         reply = self.sender()
         url = reply.url().toString()
 
-        params_set = self.__url_params[reply.url().toString()]
-        filepath = self.__image_downloaded(reply)
-        self.__art_params_filepath[params_set] = filepath
-        self.__params_art[params_set] = filepath
-        self.art_loaded.emit()
+        if url != '/':
+            params_set = self.__url_params[reply.url().toString()]
+            filepath = self.__image_downloaded(reply)
+            self.__art_params_filepath[params_set] = filepath
+            self.__params_art[params_set] = filepath
+            self.art_loaded.emit()
         reply.deleteLater()
 
     def __image_downloaded(self, reply):
