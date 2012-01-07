@@ -440,6 +440,7 @@ class PlaylistSaver(KDialog):
         name = self.__name.text().strip()
         if self.isOkay(name.encode("utf-8"), self):
             self.__client.save(name.encode('utf-8'))
+        super(PlaylistSaver, self).accept()
 
     def isOkay(self, name, parent):
 
