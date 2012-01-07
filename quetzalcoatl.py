@@ -768,7 +768,22 @@ class DatabaseModel(ItemModel):
         print 'Server Updated'
 
     def update_stored_playlist(self, playlists):
-        print 'Playlists are now {}'.format(playlists)
+        playlists_node = None
+        for node in self.itemFromIndex(QModelIndex()).children:
+            if node.label == 'Playlists':
+                playlists_node = node
+                break
+
+        if playlists_node.can_fetch_more:
+            return
+
+        playlists_index = self.index(playlists_node.row, 0)
+
+        self.beginRemoveRows(playlists_index, 0, playlists_node.row_count - 1)
+        playlists_node.remove_rows(0, playlists_node.row_count)
+        self.endRemoveRows()
+
+        self.fetchMore(playlists_index)
 
 
 class PlaylistModel(ItemModel):
@@ -1216,6 +1231,10 @@ class ExpandableItem(Item):
             return self.__label
 
         return None
+
+    @property
+    def label(self):
+        return self.__label
 
     @property
     def icon(self):
@@ -1670,6 +1689,9 @@ class Poller(QObject):
         Connects and disconnects if necessary.
         """
 
+        # This ugliness is why I'm thinking of building an implementation of
+        # the MPD protocol based on QFtp and QHttp...
+
         poll_id = self.__client.poll_id()
         idle_id = self.__client.idle_id()
         self.__client.send_status()
@@ -1681,19 +1703,23 @@ class Poller(QObject):
         result = poll.poll()
         poll.close()
 
+        playlists_updated = False
         for fd, event in result:
             if fd == idle_id:
                 updates = self.__client.fetch_idle()
                 if 'update' in updates:
                     self.updated.emit()
                 if 'stored_playlist' in updates:
-                    self.stored_playlist_updated.emit(self.__client.listplaylists())
+                    playlists_updated = True
                 self.__client.send_idle('update', 'stored_playlist')
 
         # The results of the status command will always be there,
         # of course.
         status = self.__client.fetch_status()
         self.__handle_status(status)
+
+        if playlists_updated:
+            self.stored_playlist_updated.emit(self.__client.listplaylists())
 
     def __handle_status(self, status):
         if self.__is_changed(status, 'repeat'):
