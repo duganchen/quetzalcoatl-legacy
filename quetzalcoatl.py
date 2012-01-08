@@ -311,28 +311,25 @@ class ArtLabel(QLabel):
         """
         self.set_song(self.__current_song)
 
-    def resizeEvent(self, event):
- 
-        """ Handles resize events. """
- 
-        if not self.raw_pixmap.isNull():
-            size = event.size()
-            self.refresh(size.width(), size.height())
- 
+    def paintEvent(self, event):
+        super(ArtLabel, self).paintEvent(event)
+        width = event.rect().width()
+        if width == 0:
+            return
+        height = event.rect().height()
+        if height == 0:
+            return
+        if self.raw_pixmap.isNull():
+            return
+        self.setPixmap(self.raw_pixmap.scaled(width, height, Qt.KeepAspectRatio,
+            Qt.SmoothTransformation))
+
     def load(self, filename):
         """
         The slot to call when you want to load a pixmap.
         """
         self.raw_pixmap.load(filename)
-        self.refresh(self.width(), self.height())
- 
-    def refresh(self, width, height):
-
-        if width == 0 or height == 0:
-            return
-
-        self.setPixmap(self.raw_pixmap.scaled(width, height, Qt.KeepAspectRatio,
-            Qt.SmoothTransformation))
+        self.repaint()
 
 
 class UIController(QObject):
