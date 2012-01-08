@@ -299,6 +299,7 @@ class ArtLabel(QLabel):
         filename = self.__icon_manager.get_art_filename(song)
 
         if filename is None:
+            self.raw_pixmap = QPixmap()
             self.clear()
             return
 
@@ -332,27 +333,6 @@ class ArtLabel(QLabel):
 
         self.setPixmap(self.raw_pixmap.scaled(width, height, Qt.KeepAspectRatio,
             Qt.SmoothTransformation))
-        #pixmap_width = self.raw_pixmap.width()
-        #pixmap_height = self.raw_pixmap.height()
-
-
-        #if pixmapHeight > 0:
-        #    pixmapRatio = pixmapWidth / pixmapHeight
-        #else:
-        #    pixmapRatio = pixmapWidth
- 
-        #w = width
-        #h = height
- 
-        #if h > 0:
-        #    ratio = w / h
-        #else:
-        #    ratio = w
- 
-        #if pixmapRatio < ratio:
-        #    self.setPixmap(self.pixmap.scaledToHeight(h, Qt.SmoothTransformation))
-        #else:
-        #    self.setPixmap(self.pixmap.scaledToWidth(w, Qt.SmoothTransformation))
 
 
 class UIController(QObject):
