@@ -282,7 +282,7 @@ class ArtLabel(QLabel):
         super(ArtLabel, self).__init__(parent)
         self.raw_pixmap = QPixmap()
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        self.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        self.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         self.__icon_manager = icon_manager
         self.__icon_manager.art_loaded.connect(self.recheck_art)
         self.__current_song = {}
