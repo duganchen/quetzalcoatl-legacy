@@ -280,9 +280,9 @@ class ArtLabel(QLabel):
         """ Initializes the art label. """
  
         super(ArtLabel, self).__init__(parent)
-        self.pixmap = QPixmap()
+        self.raw_pixmap = QPixmap()
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        self.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+        self.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
         self.__icon_manager = icon_manager
         self.__icon_manager.art_loaded.connect(self.recheck_art)
         self.__current_song = {}
@@ -314,7 +314,7 @@ class ArtLabel(QLabel):
  
         """ Handles resize events. """
  
-        if not self.pixmap.isNull():
+        if not self.raw_pixmap.isNull():
             size = event.size()
             self.refresh(size.width(), size.height())
  
@@ -322,30 +322,37 @@ class ArtLabel(QLabel):
         """
         The slot to call when you want to load a pixmap.
         """
-        self.pixmap.load(filename)
+        self.raw_pixmap.load(filename)
         self.refresh(self.width(), self.height())
  
     def refresh(self, width, height):
-        pixmapWidth = self.pixmap.width()
-        pixmapHeight = self.pixmap.height()
+
+        if width == 0 or height == 0:
+            return
+
+        self.setPixmap(self.raw_pixmap.scaled(width, height, Qt.KeepAspectRatio,
+            Qt.SmoothTransformation))
+        #pixmap_width = self.raw_pixmap.width()
+        #pixmap_height = self.raw_pixmap.height()
+
+
+        #if pixmapHeight > 0:
+        #    pixmapRatio = pixmapWidth / pixmapHeight
+        #else:
+        #    pixmapRatio = pixmapWidth
  
-        if pixmapHeight > 0:
-            pixmapRatio = pixmapWidth / pixmapHeight
-        else:
-            pixmapRatio = pixmapWidth
+        #w = width
+        #h = height
  
-        w = width
-        h = height
+        #if h > 0:
+        #    ratio = w / h
+        #else:
+        #    ratio = w
  
-        if h > 0:
-            ratio = w / h
-        else:
-            ratio = w
- 
-        if pixmapRatio < ratio:
-            self.setPixmap(self.pixmap.scaledToHeight(h, Qt.SmoothTransformation))
-        else:
-            self.setPixmap(self.pixmap.scaledToWidth(w, Qt.SmoothTransformation))
+        #if pixmapRatio < ratio:
+        #    self.setPixmap(self.pixmap.scaledToHeight(h, Qt.SmoothTransformation))
+        #else:
+        #    self.setPixmap(self.pixmap.scaledToWidth(w, Qt.SmoothTransformation))
 
 
 class UIController(QObject):
