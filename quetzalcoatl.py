@@ -2310,9 +2310,12 @@ class IconManager(QObject):
         params = {}
         if 'musicbrainz_albumid' in song:
             params['mbid'] = song['musicbrainz_albumid']
-        for key in ('artist', 'album'):
-            if key in song:
-                params[key] = song[key]
+        if 'albumartist' in song:
+            params['artist'] = song['albumartist']
+        elif 'artist' in song:
+            params['artist'] = song['artist']
+        if 'album' in song:
+            params['album'] = song['album']
         return frozenset(params.items())
 
 
