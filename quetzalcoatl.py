@@ -2297,8 +2297,12 @@ class IconManager(QObject):
         """
         params = {}
 
-        # This seems to causes trouble. Thr musicbrainz_albumid key
-        # doesn't seem to be returned consistently.
+        # This seems to causes trouble. The musicbrainz_albumid key
+        # doesn't seem to be returned consistently. Or at least, there's a
+        # bug where this method would randomly return keys that don't
+        # include the musicbrainz id even though the song has one.
+
+
         #if 'musicbrainz_albumid' in song:
         #    params['mbid'] = song['musicbrainz_albumid']
 
