@@ -2303,8 +2303,8 @@ class IconManager(QObject):
         # include the musicbrainz id even though the song has one.
 
 
-        #if 'musicbrainz_albumid' in song:
-        #    params['mbid'] = song['musicbrainz_albumid']
+        if 'musicbrainz_albumid' in song:
+            params['mbid'] = song['musicbrainz_albumid']
 
         if 'albumartist' in song:
             params['artist'] = song['albumartist']
