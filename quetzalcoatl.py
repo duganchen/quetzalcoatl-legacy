@@ -18,8 +18,9 @@ from PyQt4.QtCore import QDataStream, QEvent, QIODevice, QMimeData
 from PyQt4.QtCore import QModelIndex, QObject, QRegExp, QSize, Qt, QTimer
 from PyQt4.QtCore import QUrl, pyqtSignal
 from PyQt4.QtGui import QFont, QFormLayout, QIcon, QKeySequence, QLabel
-from PyQt4.QtGui import QSizePolicy, QSlider, QPixmap, QRegExpValidator
-from PyQt4.QtGui import QSplitter, QToolTip, QTreeView, QVBoxLayout, QWidget
+from PyQt4.QtGui import QSizePolicy, QSlider, QPixmap, QProgressBar
+from PyQt4.QtGui import QRegExpValidator, QSplitter, QToolTip, QTreeView
+from PyQt4.QtGui import QVBoxLayout, QWidget
 from PyQt4.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from mpd import MPDClient, MPDError
 from base64 import b64decode
@@ -152,6 +153,7 @@ class UI(KMainWindow):
         layout.addWidget(splitter)
 
         self.__icon_manager = IconManager(self)
+        self.__icon_manager.is_loading.connect(self.set_is_loading)
 
         database_view = DatabaseView(client)
         splitter.addWidget(database_view)
@@ -214,6 +216,15 @@ class UI(KMainWindow):
 
         playlist_saver = PlaylistSaver(client, self)
         save_playlist.triggered.connect(playlist_saver.show)
+
+        self.__progress_label = QLabel()
+        self.statusBar().addWidget(self.__progress_label)
+
+    def set_is_loading(self, is_loading):
+        if is_loading:
+            self.__progress_label.setText('Requesting album art...')
+        else:
+            self.__progress_label.setText('')
 
     def closeEvent(self, event):
         self.__icon_manager.close()
@@ -329,7 +340,7 @@ class ArtLabel(QLabel):
         The slot to call when you want to load a pixmap.
         """
         self.raw_pixmap.load(filename)
-        self.repaint()
+        #self.repaint()
 
 
 class UIController(QObject):
@@ -2073,6 +2084,8 @@ class IconManager(QObject):
 
     art_loaded = pyqtSignal()
 
+    is_loading = pyqtSignal(bool)
+
     __last_fm_key = b64decode('Mjk1YTAxY2ZhNjVmOWU1MjFiZGQyY2MzYzM2ZDdjODk=')
 
     __stock_icons = {}
@@ -2125,6 +2138,8 @@ class IconManager(QObject):
 
         for params, filepath in self.__art_params_filepath.iteritems():
             self.__params_art[params] = QPixmap(filepath)
+
+        self.__request_count = 0
 
 
     def icon(self, song):
@@ -2192,6 +2207,10 @@ class IconManager(QObject):
         reply = self.__network_access_manager.get(request)
         reply.finished.connect(self.__album_info_downloaded)
 
+        if self.__request_count == 0:
+            self.is_loading.emit(True)
+        self.__request_count += 1
+
     @classmethod
     def __album_info_url(cls, params_set):
         scheme = 'http'
@@ -2208,6 +2227,9 @@ class IconManager(QObject):
         return urlunsplit(parts)
 
     def __album_info_downloaded(self):
+
+        self.__request_count -= 1
+
         info_reply = self.sender()
         query = urlparse(str(info_reply.url().toEncoded())).query
         qs = parse_qs(query)
@@ -2249,7 +2271,14 @@ class IconManager(QObject):
 
         info_reply.deleteLater()
 
+        self.__request_count += 2
+
     def __icon_downloaded(self):
+
+        self.__request_count -= 1
+        if self.__request_count == 0:
+            self.is_loading.emit(False)
+
         reply = self.sender()
         url = reply.url().toString()
 
@@ -2262,6 +2291,10 @@ class IconManager(QObject):
         reply.deleteLater()
 
     def __art_downloaded(self):
+        self.__request_count -= 1
+        if self.__request_count == 0:
+            self.is_loading.emit(False)
+
         reply = self.sender()
         url = reply.url().toString()
 
