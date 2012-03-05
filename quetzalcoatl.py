@@ -2222,7 +2222,7 @@ class IconManager(QObject):
 
     def __album_info_downloaded(self):
         info_reply = self.sender()
-        query = urlparse(info_reply.url().toString()).query
+        query = urlparse(str(info_reply.url().toEncoded())).query
         qs = parse_qs(query)
         params = {}
 
