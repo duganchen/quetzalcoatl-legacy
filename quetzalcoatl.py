@@ -2214,11 +2214,11 @@ class IconManager(QObject):
         params = {}
 
         if 'mbid' in qs:
-            params['mbid'] = qs['mbid'][0].encode('utf-8')
+            params['mbid'] = qs['mbid'][0]
         if 'artist' in qs:
-            params['artist'] = qs['artist'][0].encode('utf-8')
+            params['artist'] = qs['artist'][0]
         if 'album' in qs:
-            params['album'] = qs['album'][0].encode('utf-8')
+            params['album'] = qs['album'][0]
 
         params_set = frozenset(params.items())
 
@@ -2296,8 +2296,12 @@ class IconManager(QObject):
         Translates a song into a hashable three-part last.fm lookup key.
         """
         params = {}
-        if 'musicbrainz_albumid' in song:
-            params['mbid'] = song['musicbrainz_albumid']
+
+        # This seems to causes trouble. Thr musicbrainz_albumid key
+        # doesn't seem to be returned consistently.
+        #if 'musicbrainz_albumid' in song:
+        #    params['mbid'] = song['musicbrainz_albumid']
+
         if 'albumartist' in song:
             params['artist'] = song['albumartist']
         elif 'artist' in song:
