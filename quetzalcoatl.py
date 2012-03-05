@@ -719,33 +719,20 @@ class ItemModel(QAbstractItemModel):
         """ Returns an iterator for the children. """
         return self.__root.children
 
-    def __refresh_icon(self, child, params_set):
-        params = dict(params_set)
-        if 'mbid' in params:
-            params['musicbrainz_albumid'] = params['mbid']
-            del params['mbid']
-        if child.is_song:
-            is_match = True
+    def __icon_loaded(self, params_set):
+        self.__refresh_icon(self.__root, params_set)
 
-            for key, value in params.iteritems():
-                if key not in child.song:
-                    is_match = False
-                    break
-                if child.song[key] != value:
-                    is_match = False
-                    break
-            if is_match: 
+    def __refresh_icon(self, child, params_set):
+
+        if child.is_song:
+            song_key = IconManager.get_song_key(child.song)
+            if song_key == params_set:
                 parent_index = self.createIndex(child.parent.row, 0, child.parent)
                 index = self.index(child.row, 0, parent_index) 
                 self.dataChanged.emit(index, index)
 
-            return
-
         for grandchild in child.children:
-            self.__refresh_icon(grandchild, params)
-
-    def __icon_loaded(self, params_set):
-        self.__refresh_icon(self.__root, params_set)
+            self.__refresh_icon(grandchild, params_set)
 
 
 class DatabaseModel(ItemModel):
@@ -2147,7 +2134,7 @@ class IconManager(QObject):
         signal is emitted on success.
         """
 
-        params_set = self.__get_song_key(song)
+        params_set = self.get_song_key(song)
 
         params = dict(params_set)
 
@@ -2161,7 +2148,7 @@ class IconManager(QObject):
         return self.__icon_by_filename(song)
     
     def get_art_filename(self, song):
-        return self.__art_params_filepath.get(self.__get_song_key(song))
+        return self.__art_params_filepath.get(self.get_song_key(song))
 
     def close(self):
         """
@@ -2303,7 +2290,8 @@ class IconManager(QObject):
             makedirs(root_path)
         return path.join(root_path, filename)
 
-    def __get_song_key(self, song):
+    @classmethod
+    def get_song_key(cls, song):
         """
         Translates a song into a hashable three-part last.fm lookup key.
         """
