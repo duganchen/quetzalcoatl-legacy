@@ -28,6 +28,7 @@ import cPickle
 from datetime import datetime
 import json
 from os import makedirs, path
+from os.path import isdir
 import posixpath
 from select import EPOLLIN, epoll
 import socket
@@ -281,15 +282,15 @@ class UI(KMainWindow):
 
 
 class ArtLabel(QLabel):
- 
+
     """
     A QLabel that scales album art images properly.
     """
- 
+
     def __init__(self, icon_manager, parent=None):
- 
+
         """ Initializes the art label. """
- 
+
         super(ArtLabel, self).__init__(parent)
         self.raw_pixmap = QPixmap()
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
@@ -739,7 +740,7 @@ class ItemModel(QAbstractItemModel):
             song_key = IconManager.get_song_key(child.song)
             if song_key == params_set:
                 parent_index = self.createIndex(child.parent.row, 0, child.parent)
-                index = self.index(child.row, 0, parent_index) 
+                index = self.index(child.row, 0, parent_index)
                 self.dataChanged.emit(index, index)
 
         for grandchild in child.children:
@@ -1165,7 +1166,7 @@ class Song(Item):
     @property
     def is_song(self):
         return True
-    
+
     @property
     def song(self):
         return self.__song
@@ -2161,7 +2162,7 @@ class IconManager(QObject):
             self.__get_album_art(params_set)
 
         return self.__icon_by_filename(song)
-    
+
     def get_art_filename(self, song):
         return self.__art_params_filepath.get(self.get_song_key(song))
 
@@ -2311,6 +2312,9 @@ class IconManager(QObject):
                 *urlparse(reply.url().toString()).path.split('/')[2:])
         if not path.exists(path.dirname(image_path)):
             makedirs(path.dirname(image_path))
+        if isdir(image_path):
+            # This is a strange special case. Investigate.
+            return ''
         image = open(image_path, 'wb')
         image.write(reply.readAll())
         image.close()
